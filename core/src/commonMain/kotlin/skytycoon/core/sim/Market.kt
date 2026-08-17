@@ -463,6 +463,11 @@ object Market {
         repeat(Balance.SPILL_ROUNDS + 1) {
             // 1) 이번 라운드에 각 여정이 원하는 양.
             val want = HashMap<ConnectOffer, Double>()
+            // 이번 라운드에 실제로 쓴 정규화 분모. 3) 에서 "환승 안 함" 몫을 뺄 때
+            // **같은 분모**를 써야 한다 — 좌석이 찬 후보를 빼고 정규화해 놓고 전체
+            // 분모로 바깥 몫을 빼면 덜 빠져서, 안 타기로 한 손님이 다음 라운드에
+            // 다시 제안된다.
+            val roundDenom = HashMap<String, Double>()
             for (pairKey in keys) {
                 val left = leftByPair[pairKey] ?: continue
                 if (left <= 1.0) continue
@@ -478,6 +483,7 @@ object Market {
                 // 남은 후보만으로 다시 정규화한다. 바깥 선택지(환승 안 함)는 계속 겨룬다.
                 val openDenom = open.sumOf { weights[it] } + outsideByPair.getValue(pairKey)
                 if (openDenom <= 0.0) continue
+                roundDenom[pairKey] = openDenom
                 for (i in open) want[offers[i]] = left * (weights[i] / openDenom)
             }
             if (want.isEmpty()) return@repeat
@@ -503,6 +509,13 @@ object Market {
             var anyServed = false
             for (pairKey in keys) {
                 val left = leftByPair[pairKey] ?: continue
+                // 이번 라운드에 열린 후보가 하나도 없었다면 좌석이 어디에도 없다는 뜻이다.
+                // spareLeft 는 줄기만 하므로 다음 라운드에도 마찬가지 — 여기서 끝낸다.
+                val openDenom = roundDenom[pairKey]
+                if (openDenom == null) {
+                    leftByPair[pairKey] = 0.0
+                    continue
+                }
                 val offers = candidates.getValue(pairKey)
                 var served = 0.0
                 for (o in offers) {
@@ -521,8 +534,7 @@ object Market {
                 }
                 // 좌석이 없어 흘린 몫만 다시 돌린다. "환승하지 않겠다"를 고른 손님까지
                 // 재제안하면 라운드를 거듭할수록 바깥 선택지가 무력해진다 (50% 가 93.75% 로).
-                val denom = weightsByPair.getValue(pairKey).sum() + outsideByPair.getValue(pairKey)
-                val spilled = left - served - left * (outsideByPair.getValue(pairKey) / denom)
+                val spilled = left - served - left * (outsideByPair.getValue(pairKey) / openDenom)
                 if (served > 1e-9) anyServed = true
                 leftByPair[pairKey] = if (spilled <= 1e-9) 0.0 else spilled
             }

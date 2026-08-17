@@ -93,12 +93,26 @@ object Ai {
         return s
     }
 
-    /** 돈이 안 되고 손님도 없는 노선은 접는다. */
+    /**
+     * 돈이 안 되고 손님도 없는 노선은 접는다.
+     *
+     * [RouteResult.profit] 에는 **슬롯 임차료가 빠져 있다** — 임차료는 회사 단위로
+     * 한 번에 걷히기 때문이다. 그래서 노선 장부상으로는 조금 남지만 그 노선이 물고
+     * 있는 슬롯의 임차료가 그보다 큰 경우, 회사 전체로는 손해인데도 영영 정리되지
+     * 않는다. `shedIdleSlots` 도 손을 못 댄다 (놀고 있는 슬롯이 아니라 쓰는 중이다).
+     * 그래서 여기서 양 끝 슬롯 임차료를 얹어 **진짜 기여이익**으로 판단한다.
+     */
     private fun pruneRoutes(state: GameState, airlineId: String, rng: Rng): GameState {
         var s = state
         for (route in s.routesOf(airlineId)) {
             val last = route.last ?: continue
-            val hopeless = last.profit < 0 && last.loadFactor < 0.48
+            // 주간 왕복 1회에 양 끝 슬롯이 하나씩 필요하다 — 편수가 곧 점유 슬롯 수다.
+            val rent = route.freq * (
+                Economics.slotRent(s, airlineId, route.from) +
+                    Economics.slotRent(s, airlineId, route.to)
+                )
+            val netOfRent = last.profit - rent
+            val hopeless = netOfRent < 0 && last.loadFactor < 0.48
             if (hopeless && rng.chance(0.45)) {
                 s = cmd(s, Command.CloseRoute(airlineId, route.id))
             }
