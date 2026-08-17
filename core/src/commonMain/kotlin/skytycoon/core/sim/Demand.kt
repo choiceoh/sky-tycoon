@@ -15,8 +15,14 @@ data class PairDemand(val business: Double, val leisure: Double) {
 object Demand {
     /**
      * 도시 규모·관광 매력·거리만으로 정해지는 연간 기초 수요.
-     * 비즈니스 수요는 거리에 더 빨리 감쇠하고(당일 출장이 어려워진다),
-     * 레저 수요는 멀어도 비교적 버틴다.
+     *
+     * 거리에 따라 **승객의 구성**이 바뀐다. 짧은 구간은 관광객이 흔하지만, 대륙을 건너는
+     * 노선은 그 값과 시간을 감당하는 쪽 — 출장·상용 수요가 중심이 된다. 그래서 레저가
+     * 장거리에서 더 빨리 빠지고 비즈니스가 오래 버틴다.
+     *
+     * 이 구성이 곧 장거리 채산이다. 비즈니스는 수익계수가 레저의 두 배라
+     * (BIZ_YIELD 1.90 / LEI_YIELD 0.95), 좌석이 덜 차는 장거리 대형기가 그래도 남는 것은
+     * 태우는 승객의 질이 다르기 때문이다.
      */
     fun annualBase(a: City, b: City, devA: Double = 1.0, devB: Double = 1.0): PairDemand {
         val d = Geo.distance(a.id, b.id)
@@ -30,8 +36,8 @@ object Demand {
         val bizCore = (econA * econB).pow(Balance.DEMAND_BIZ_EXP)
         val leiCore = Balance.DEMAND_LEISURE_W * sqrt(tourA * tourB)
 
-        val bizDecay = 1.0 / (1.0 + (d / Balance.DEMAND_DIST_HALF).pow(0.95))
-        val leiDecay = 1.0 / (1.0 + (d / Balance.DEMAND_DIST_HALF).pow(0.80))
+        val bizDecay = 1.0 / (1.0 + (d / Balance.DEMAND_DIST_HALF).pow(Balance.DEMAND_BIZ_DECAY_EXP))
+        val leiDecay = 1.0 / (1.0 + (d / Balance.DEMAND_DIST_HALF).pow(Balance.DEMAND_LEI_DECAY_EXP))
 
         // 가까운 도시쌍은 철도·고속도로에 승객을 뺏긴다.
         val rail = if (d < Balance.DEMAND_RAIL_RANGE) {

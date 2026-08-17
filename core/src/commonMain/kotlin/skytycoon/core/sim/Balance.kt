@@ -24,6 +24,16 @@ object Balance {
     const val DEMAND_LEISURE_W = 1.2
     const val DEMAND_DIST_HALF = 1_800.0
     const val DEMAND_DIST_EXP = 0.9
+
+    /**
+     * 거리에 따른 세그먼트별 감쇠 지수 (클수록 멀어질수록 빨리 준다).
+     *
+     * 레저가 비즈니스보다 커야 한다 — 장거리일수록 승객이 출장 쪽으로 기울어야
+     * 대형기 장거리 노선의 채산이 선다. 반대로 두면 장거리가 관광 수요 위주가 되어
+     * 수익계수가 낮은 손님만 태우고 마진이 바닥을 긴다 (실제로 그랬다).
+     */
+    const val DEMAND_BIZ_DECAY_EXP = 0.70
+    const val DEMAND_LEI_DECAY_EXP = 1.15
     const val DEMAND_SAME_REGION = 1.18
     /** 이보다 가까우면 육상교통에 밀린다 */
     const val DEMAND_RAIL_RANGE = 800.0

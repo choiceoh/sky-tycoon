@@ -70,12 +70,15 @@ class GeoAndDemandTest {
     }
 
     @Test
-    fun `장거리 노선일수록 레저 비중이 높다`() {
+    fun `장거리 노선일수록 출장 비중이 높다`() {
+        // 예전에는 반대로 잡혀 있었다 — 장거리가 레저 위주라, 수익계수가 낮은 손님만
+        // 태우고 대형기 장거리 노선의 마진이 12% 까지 눌렸다. 값과 시간을 감당하는 쪽은
+        // 출장 수요라고 보는 편이 채산에도 맞다 (BIZ_YIELD 1.90 vs LEI_YIELD 0.95).
         val short = Demand.annualBase(Cities["seoul"], Cities["tokyo"])
         val long = Demand.annualBase(Cities["seoul"], Cities["sydney"])
         assertTrue(
-            long.businessShare < short.businessShare,
-            "장거리에서 출장 비중이 더 낮아야 한다 (단거리 ${short.businessShare}, 장거리 ${long.businessShare})",
+            long.businessShare > short.businessShare,
+            "장거리에서 출장 비중이 더 높아야 한다 (단거리 ${short.businessShare}, 장거리 ${long.businessShare})",
         )
     }
 }
