@@ -108,6 +108,7 @@ object NewGame {
                 cash = seedCo.cash * inflation,
                 debt = 0.0,
                 shares = seedCo.shares,
+                foundingShares = seedCo.shares,
                 sharePrice = 0.0,
                 serviceLevel = if (seedCo.bonusKey == "service") 4 else 3,
                 brand = brand,
