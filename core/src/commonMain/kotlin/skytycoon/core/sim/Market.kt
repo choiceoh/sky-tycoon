@@ -52,7 +52,16 @@ object Market {
      * 각 세그먼트 안에서는 다항 로짓으로 점유율이 갈리며, 좌석이 모자라 넘친 수요는
      * 여유가 있는 다른 항공사로 몇 차례에 걸쳐 흘러간다.
      */
-    fun resolvePair(state: GameState, a: City, b: City, routes: List<Route>): List<RouteOutcome> {
+    fun resolvePair(state: GameState, a: City, b: City, routes: List<Route>): List<RouteOutcome> =
+        resolvePair(state, a, b, routes, HashMap())
+
+    private fun resolvePair(
+        state: GameState,
+        a: City,
+        b: City,
+        routes: List<Route>,
+        unmetOut: HashMap<String, Double>,
+    ): List<RouteOutcome> {
         if (routes.isEmpty()) return emptyList()
         // 공항이 닫히면 비행기가 안 뜬다. 빈 결과를 돌려줘야 결산에서 연료·승무원·착륙료가
         // 청구되지 않는다 (수요만 0 으로 만들면 원가는 그대로 나간다).
@@ -146,12 +155,18 @@ object Market {
         }
         val induced = weightedFareRatio.coerceIn(0.3, 3.0).pow(-Balance.INDUCED_ELASTICITY)
 
-        allocate(offers, demand.business * induced) { it.bizUtil }
+        val unmet = DoubleArray(1)
+        val fringeUtil = fringeUtility(Geo.pairKey(a.id, b.id), dist)
+        allocate(offers, demand.business * induced, unmet, fringeUtil) { it.bizUtil }
             .also { served -> offers.forEachIndexed { i, o -> o.biz = served[i] } }
-        allocate(offers, demand.leisure * induced) { it.leiUtil }
+        allocate(offers, demand.leisure * induced, unmet, fringeUtil) { it.leiUtil }
             .also { served -> offers.forEachIndexed { i, o -> o.lei = served[i] } }
+        unmetOut[Geo.pairKey(a.id, b.id)] = unmet[0]
 
-        val totalPax = offers.sumOf { it.biz + it.lei }
+        // 점유율 분모는 **로컬 항공사 몫까지 포함한 시장 전체**다. 모델에 있는 회사끼리만
+        // 나누면 혼자 취항한 구간이 언제나 100% 로 뜬다 — 실제로는 로컬에 밀려 조금밖에
+        // 못 실었어도 그렇다.
+        val marketTotal = (demand.business + demand.leisure) * induced
         return offers.map { o ->
             val revenue = o.biz * o.fare * Balance.BIZ_YIELD + o.lei * o.fare * Balance.LEI_YIELD
             RouteOutcome(
@@ -161,7 +176,7 @@ object Market {
                 seats = o.seats,
                 fare = o.fare,
                 localRevenue = revenue,
-                share = if (totalPax <= 0) 0.0 else (o.biz + o.lei) / totalPax,
+                share = if (marketTotal <= 0) 0.0 else ((o.biz + o.lei) / marketTotal).coerceIn(0.0, 1.0),
             )
         }
     }
@@ -180,8 +195,62 @@ object Market {
     }
 
     /**
+     * 그 구간에서 **로컬 항공사가 얼마나 겨룰 만한가**. 거리가 멀수록 약해지고,
+     * 도시쌍마다 종 모양으로 흩어진다.
+     *
+     * 단거리 역내 구간에는 소형기로 붙을 수 있는 지역 사업자가 널려 있지만, 태평양을
+     * 건너려면 광동체와 그걸 굴릴 자본이 있어야 해서 **그럴 수 있는 회사는 대개 이미
+     * 게임 안에 있다**. 로컬을 거리에 무관하게 똑같이 강하게 두면 도쿄-LA 같은 간판
+     * 간선이 독점인데도 반도 못 채운다 — 현실과 어긋난다.
+     *
+     * 거기에 도시쌍마다 [Balance.FRINGE_SIGMA] 만큼의 편차를 얹는다. 로컬 사업자의
+     * 실력이 어디나 똑같을 리 없다 — 억센 국적사가 버티는 구간이 있고, 손 놓은 구간이
+     * 있다. 값 하나로 두면 모든 노선이 똑같이 빡빡해 **어디를 뚫을지가 판단거리가 되지
+     * 않는다**. 흩어 놓아야 "여기는 해볼 만하다"를 찾는 재미가 생긴다.
+     *
+     * 편차는 도시쌍 이름에서 결정론적으로 뽑는다. 분기마다 다시 굴리면 탑승률이 이유
+     * 없이 출렁여 경영 판단이 잡음에 묻히고, 세이브도 재현되지 않는다. 해시를 직접
+     * 짜는 것은 `String.hashCode` 가 플랫폼마다 갈릴 여지를 없애기 위해서다 —
+     * 안드로이드와 데스크톱이 같은 세이브에서 같은 시장을 봐야 한다.
+     */
+    private fun fringeUtility(pairKey: String, distanceKm: Double): Double {
+        val far = Balance.FRINGE_DIST_W * ln((distanceKm / Balance.FRINGE_DIST_REF).coerceAtLeast(1.0))
+        return Balance.FRINGE_UTIL - far + bellDeviate(pairKey) * Balance.FRINGE_SIGMA
+    }
+
+    /**
+     * 문자열 하나에서 **표준정규에 가까운 값**을 결정론적으로 뽑는다 (평균 0, 표준편차 1).
+     *
+     * 균등난수 넷을 더하는 어윈–홀 방식이다. 정규분포에 충분히 가까우면서 ±3.46σ 로
+     * 잘려 있어, 로컬이 터무니없이 세거나 아예 없는 노선이 나오지 않는다.
+     */
+    private fun bellDeviate(key: String): Double {
+        // FNV-1a — 플랫폼에 의존하지 않는 고정 해시.
+        var h = -0x340d631b7bdddcdbL
+        for (c in key) {
+            h = h xor c.code.toLong()
+            h *= 0x100000001b3L
+        }
+        var sum = 0.0
+        repeat(4) {
+            h = mix64(h)
+            sum += ((h ushr 11).toDouble() / (1L shl 53).toDouble())
+        }
+        // 균등 4개의 합은 평균 2, 표준편차 sqrt(4/12) = 0.5774.
+        return (sum - 2.0) / 0.5773502691896257
+    }
+
+    /** splitmix64 의 마무리 섞기 — 이웃한 도시쌍 이름이 비슷한 값으로 몰리지 않게 한다. */
+    private fun mix64(seed: Long): Long {
+        var z = seed + -0x61c8864680b583ebL
+        z = (z xor (z ushr 30)) * -0x40a7b892e31b1a47L
+        z = (z xor (z ushr 27)) * -0x6b2fb644ecceee15L
+        return z xor (z ushr 31)
+    }
+
+    /**
      * 로짓으로 수요를 나눈다. 후보에는 게임에 등장하는 항공사들뿐 아니라 **로컬 항공사**
-     * ([Balance.FRINGE_UTIL]) 라는 바깥 선택지가 늘 함께 있다.
+     * ([fringeUtility]) 라는 바깥 선택지가 늘 함께 있다.
      *
      * 게임에 나오는 여덟 회사는 그 시대의 **주요 항공사**다. 나머지 수요가 비어 있는 게
      * 아니라, 모델에 없는 지역 항공사들이 낮은 경쟁력으로 실어 나르고 있다고 본다.
@@ -192,7 +261,13 @@ object Market {
      * 좌석이 모자라 못 태운 몫만 다음 라운드로 넘긴다. 로컬을 택한 손님까지 다시 돌리면
      * 라운드를 거듭할수록 바깥 선택지가 무력해져(50% 가 93.75% 가 된다) 이 모델이 무너진다.
      */
-    private fun allocate(offers: List<Offer>, demand: Double, utility: (Offer) -> Double): DoubleArray {
+    private fun allocate(
+        offers: List<Offer>,
+        demand: Double,
+        leftover: DoubleArray,
+        fringeUtil: Double,
+        utility: (Offer) -> Double,
+    ): DoubleArray {
         val taken = DoubleArray(offers.size)
         if (demand <= 0.0) return taken
         var left = demand
@@ -203,9 +278,9 @@ object Market {
             if (active.isEmpty()) return@repeat
 
             val utils = active.map { utility(offers[it]) }
-            val maxU = maxOf(utils.max(), Balance.FRINGE_UTIL)
+            val maxU = maxOf(utils.max(), fringeUtil)
             val weights = utils.map { exp(it - maxU) }
-            val fringe = exp(Balance.FRINGE_UTIL - maxU)
+            val fringe = exp(fringeUtil - maxU)
             val denom = weights.sum() + fringe
             if (denom <= 0.0) return@repeat
 
@@ -219,9 +294,15 @@ object Market {
                 // 좌석이 없어 흘린 몫만 다시 돌린다. 로컬을 택한 손님은 이미 떠났다.
                 spilled += want - give
             }
-            if (spilled <= 1e-9) return@repeat
+            if (spilled <= 1e-9) {
+                left = 0.0
+                return@repeat
+            }
             left = spilled
         }
+        // 끝까지 좌석을 못 구한 몫. 로컬을 택한 손님은 여기 들어 있지 않다 —
+        // 그들은 이미 다른 항공사를 골랐지 "아직 안 정한" 사람이 아니다.
+        leftover[0] += left
         return taken
     }
 
@@ -243,15 +324,17 @@ object Market {
             byPair.getOrPut(Geo.pairKey(r.from, r.to)) { mutableListOf() }.add(r)
         }
         val out = HashMap<Int, RouteOutcome>()
-        val localPaxByPair = HashMap<String, Double>()
+        // 1단계가 남긴 **진짜 미충족 수요**. 유발 수요가 반영돼 있고, 로컬을 택한 손님은
+        // 빠져 있다 — 다시 계산하면 두 단계의 시장 크기가 어긋나고 로컬 손님을 환승에
+        // 두 번 파는 셈이 된다.
+        val unmetByPair = HashMap<String, Double>()
         for ((key, routes) in byPair) {
             val (idA, idB) = key.split("|")
-            for (outcome in resolvePair(state, Cities[idA], Cities[idB], routes)) {
+            for (outcome in resolvePair(state, Cities[idA], Cities[idB], routes, unmetByPair)) {
                 out[outcome.routeId] = outcome
-                localPaxByPair[key] = (localPaxByPair[key] ?: 0.0) + outcome.localPax
             }
         }
-        return resolveConnections(state, out, localPaxByPair)
+        return resolveConnections(state, out, unmetByPair)
     }
 
     /** 환승 후보 하나 — 한 항공사가 허브 하나를 거쳐 A→C 를 잇는 여정. */
@@ -277,7 +360,7 @@ object Market {
     private fun resolveConnections(
         state: GameState,
         base: Map<Int, RouteOutcome>,
-        localPaxByPair: Map<String, Double>,
+        unmetByPair: Map<String, Double>,
     ): Map<Int, RouteOutcome> {
         // 노선별 남은 좌석. 환승 승객이 여기서만 태워진다.
         val spare = HashMap<Int, Double>()
@@ -347,59 +430,103 @@ object Market {
         // 동시에 먹으므로, 나중에 노선별로 따로 자르면 한쪽만 깎여 "한 승객이 두 구간을
         // 쓴다"는 전제가 깨진다 (A 구간은 80% 로 줄고 B 구간은 그대로 남는 식).
         val spareLeft = HashMap(spare)
-        // 도시쌍 순서가 배분에 영향을 주므로 키로 정렬해 결정론을 지킨다 —
-        // 같은 시드가 같은 전개를 재현해야 한다.
-        for (pairKey in candidates.keys.sorted()) {
-            val offers = candidates.getValue(pairKey)
-            val (aId, cId) = pairKey.split("|")
-            val demand = Demand.quarterly(state, Cities[aId], Cities[cId]).total
-            if (demand <= 0.0) continue
-            // 직항이 이미 태운 몫은 빠진다. 환승은 남은 수요를 줍는 것이다.
-            val unmet = (demand - (localPaxByPair[pairKey] ?: 0.0)).coerceAtLeast(0.0)
-            if (unmet <= 1.0) continue
 
-            // 로짓에 **"환승하지 않는다"는 선택지**를 함께 넣는다. 환승 후보끼리만
-            // 정규화하면 CONNECT_PENALTY 가 모든 항에서 똑같이 빠져 그대로 상쇄되고,
-            // 후보가 하나뿐이면 아무리 비싸고 불편해도 남은 수요를 통째로 가져간다.
+        // 도시쌍마다 로짓 가중치를 미리 굳혀 둔다. **"환승하지 않는다"는 선택지**를 함께
+        // 넣는다 — 후보끼리만 정규화하면 CONNECT_PENALTY 가 모든 항에서 똑같이 빠져
+        // 상쇄되고, 후보가 하나뿐이면 아무리 나쁜 여정이어도 남은 수요를 통째로 가져간다.
+        // 키로 정렬해 결정론을 지킨다 (같은 시드가 같은 전개를 재현해야 한다).
+        val keys = candidates.keys.sorted()
+        val weightsByPair = HashMap<String, List<Double>>()
+        val outsideByPair = HashMap<String, Double>()
+        val leftByPair = HashMap<String, Double>()
+        for (pairKey in keys) {
+            val offers = candidates.getValue(pairKey)
+            // 직항 시장이 남긴 몫만 줍는다. 아무도 취항하지 않은 도시쌍은 1단계를 거치지
+            // 않았으므로 수요 전체가 미충족이다.
+            val (aId, cId) = pairKey.split("|")
+            val unmet = unmetByPair[pairKey] ?: Demand.quarterly(state, Cities[aId], Cities[cId]).total
+            if (unmet <= 1.0) continue
             val maxU = maxOf(offers.maxOf { it.util }, Balance.CONNECT_OUTSIDE_UTIL)
             val weights = offers.map { exp(it.util - maxU) }
             val outside = exp(Balance.CONNECT_OUTSIDE_UTIL - maxU)
-            val denom = weights.sum() + outside
-            if (denom <= 0.0) continue
+            if (weights.sum() + outside <= 0.0) continue
+            weightsByPair[pairKey] = weights
+            outsideByPair[pairKey] = outside
+            leftByPair[pairKey] = unmet
+        }
 
-            // 좌석이 모자라 못 태운 몫은 여유 있는 다른 여정으로 흘려보낸다 (직항 시장과
-            // 같은 스필). 이게 없으면 인기 있는 여정이 배정만 받고 못 태운 승객이 그대로
-            // 증발해, 옆에 빈 좌석이 남아도 허브 수송량이 실제보다 적게 잡힌다.
-            var left = unmet
-            repeat(Balance.SPILL_ROUNDS + 1) {
-                if (left <= 1.0) return@repeat
+        // 도시쌍을 하나씩 끝까지 태우고 넘어가면 **먼저 처리된 도시쌍이 공용 구간의 여유
+        // 좌석을 통째로 먹는다** — 도쿄 허브에서 도쿄–LA 의 빈자리를 베이징발 승객이 다
+        // 가져가고 서울·홍콩발은 한 명도 못 타는 식으로, 정렬 순서가 곧 허브 경제가 된다.
+        // 그래서 라운드마다 **모든 도시쌍의 희망 수요를 먼저 모으고**, 구간별로 초과분을
+        // 비례 배분해 깎는다. 한 여정은 두 구간을 쓰므로 더 빡빡한 쪽 비율을 따른다.
+        repeat(Balance.SPILL_ROUNDS + 1) {
+            // 1) 이번 라운드에 각 여정이 원하는 양.
+            val want = HashMap<ConnectOffer, Double>()
+            for (pairKey in keys) {
+                val left = leftByPair[pairKey] ?: continue
+                if (left <= 1.0) continue
+                val offers = candidates.getValue(pairKey)
+                val weights = weightsByPair.getValue(pairKey)
                 val open = offers.indices.filter { i ->
                     minOf(
                         spareLeft[offers[i].legA.routeId] ?: 0.0,
                         spareLeft[offers[i].legB.routeId] ?: 0.0,
                     ) > 1e-6
                 }
-                if (open.isEmpty()) return@repeat
+                if (open.isEmpty()) continue
                 // 남은 후보만으로 다시 정규화한다. 바깥 선택지(환승 안 함)는 계속 겨룬다.
-                val openDenom = open.sumOf { weights[it] } + outside
-                if (openDenom <= 0.0) return@repeat
+                val openDenom = open.sumOf { weights[it] } + outsideByPair.getValue(pairKey)
+                if (openDenom <= 0.0) continue
+                for (i in open) want[offers[i]] = left * (weights[i] / openDenom)
+            }
+            if (want.isEmpty()) return@repeat
+
+            // 2) 구간별 희망 합계 → 여유를 넘으면 그 비율만큼 모두 깎는다.
+            // 합산 순서가 부동소수점 결과를 바꾸므로 정렬된 키 순서로만 훑는다
+            // (want 는 객체 동일성 해시라 순회 순서를 믿을 수 없다).
+            val legWant = HashMap<Int, Double>()
+            for (pairKey in keys) {
+                for (o in candidates.getValue(pairKey)) {
+                    val w = want[o] ?: continue
+                    legWant[o.legA.routeId] = (legWant[o.legA.routeId] ?: 0.0) + w
+                    legWant[o.legB.routeId] = (legWant[o.legB.routeId] ?: 0.0) + w
+                }
+            }
+            val legScale = HashMap<Int, Double>()
+            for ((routeId, w) in legWant) {
+                val room = spareLeft[routeId] ?: 0.0
+                legScale[routeId] = if (w <= room) 1.0 else (room / w)
+            }
+
+            // 3) 실제로 태우고, 도시쌍별로 못 태운 몫을 다음 라운드로 넘긴다.
+            var anyServed = false
+            for (pairKey in keys) {
+                val left = leftByPair[pairKey] ?: continue
+                val offers = candidates.getValue(pairKey)
                 var served = 0.0
-                for (i in open) {
-                    val o = offers[i]
-                    val want = left * (weights[i] / openDenom)
-                    val roomA = spareLeft[o.legA.routeId] ?: 0.0
-                    val roomB = spareLeft[o.legB.routeId] ?: 0.0
-                    val take = minOf(want, roomA, roomB)
-                    if (take <= 0.0) continue
-                    spareLeft[o.legA.routeId] = roomA - take
-                    spareLeft[o.legB.routeId] = roomB - take
+                for (o in offers) {
+                    val w = want[o] ?: continue
+                    val scale = minOf(
+                        legScale[o.legA.routeId] ?: 1.0,
+                        legScale[o.legB.routeId] ?: 1.0,
+                    )
+                    val take = w * scale
+                    if (take <= 1e-9) continue
+                    spareLeft[o.legA.routeId] = (spareLeft[o.legA.routeId] ?: 0.0) - take
+                    spareLeft[o.legB.routeId] = (spareLeft[o.legB.routeId] ?: 0.0) - take
                     o.pax += take
                     served += take
                     accumulate(o, take, addPax, addRev)
                 }
-                if (served <= 1e-9) return@repeat
-                left -= served
+                // 좌석이 없어 흘린 몫만 다시 돌린다. "환승하지 않겠다"를 고른 손님까지
+                // 재제안하면 라운드를 거듭할수록 바깥 선택지가 무력해진다 (50% 가 93.75% 로).
+                val denom = weightsByPair.getValue(pairKey).sum() + outsideByPair.getValue(pairKey)
+                val spilled = left - served - left * (outsideByPair.getValue(pairKey) / denom)
+                if (served > 1e-9) anyServed = true
+                leftByPair[pairKey] = if (spilled <= 1e-9) 0.0 else spilled
             }
+            if (!anyServed) return@repeat
         }
         if (addPax.isEmpty()) return base
 

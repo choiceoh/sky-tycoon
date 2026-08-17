@@ -339,16 +339,25 @@ object Actions {
     }
 
     /**
-     * 공항 확장 공사비. 같은 수의 슬롯을 지금 시세로 사는 값에 배수를 얹고,
+     * 공항 확장 공사비. **후원사가 실제로 받는 슬롯**을 지금 시세로 사는 값에 배수를 얹고,
      * 이미 확장된 공항일수록 더 붙인다 (한 곳을 무한히 키우지 못하게).
+     *
+     * 예전에는 늘어나는 슬롯 **전부**(60개)에 배수를 곱했다. 후원사가 가져가는 건 그중
+     * 절반이라 배수 3.0 이면 30개를 받으려고 180개 값을 치른 셈이었고, 받은 슬롯은
+     * 임차 자산이라 장부에 취득 수수료만큼만 잡혀 **확장할 때마다 자기자본이 통째로 타
+     * 없어졌다** (자동조종 10년에서 확장 두 번이 2억 8천만 달러를 지웠다).
+     * 배수는 이제 받는 몫에 대한 웃돈이라 상수가 뜻하는 바와 실제가 일치한다.
      */
     fun expansionCost(state: GameState, airlineId: String, city: String): Double {
         val done = state.cityState[city]?.expansions ?: 0
         val unit = Economics.slotPrice(state, airlineId, city)
         var mul = Balance.EXPANSION_COST_MUL
         repeat(done) { mul *= Balance.EXPANSION_REPEAT_MUL }
-        return unit * Balance.EXPANSION_SLOTS * mul
+        return unit * sponsorSlots() * mul
     }
+
+    /** 확장 한 번에 후원사가 배정받는 슬롯 수. */
+    fun sponsorSlots(): Int = (Balance.EXPANSION_SLOTS * Balance.EXPANSION_SPONSOR_SHARE).toInt()
 
     /** 이 공항에 이미 삽을 뜬 공사가 있는가 (한 번에 하나만). */
     fun expansionInProgress(state: GameState, city: String): Boolean =
@@ -401,7 +410,7 @@ object Actions {
             return ActionResult.fail(state, "확장 공사비 ${(cost / 1e6).toInt()}백만 달러가 부족합니다.")
         }
 
-        val sponsorSlots = (Balance.EXPANSION_SLOTS * Balance.EXPANSION_SPONSOR_SHARE).toInt()
+        val sponsorSlots = sponsorSlots()
         val expansion = Expansion(
             id = state.nextId,
             city = city.id,
