@@ -208,6 +208,12 @@ object Stock {
         // 발행 주식 수에서 소각한다 (남은 주주의 지분율이 그만큼 올라간다).
         val treasury = target.holdings[acquirerId] ?: 0.0
         val acquirerShares = (acquirer.shares - treasury).coerceAtLeast(acquirer.shares * 0.1)
+        // 평생 희석 한도는 `shares - issuedTotal` 을 "증자 전 원래 주식 수"로 읽는다.
+        // 자사주를 소각하면서 shares 만 줄이면 그 기준이 함께 어긋나 — 상대가 우리 주식을
+        // 많이 들고 있었을수록 인수사가 멀쩡한 증자 여력을 잃는다. 같은 양만큼 함께 줄여
+        // 원래 주식 수가 보존되게 한다.
+        val cancelled = acquirer.shares - acquirerShares
+        val acquirerIssuedTotal = (acquirer.issuedTotal - cancelled).coerceAtLeast(0.0)
 
         // 인수사 몫을 뺀 나머지 지분(경쟁사 보유분 + 시장 유통물량)을 시장가로 사들인다.
         // 어디서도 빼지 않으면 과반만 사고 회사 전체를 가져가면서 현금이 불어난다.
@@ -252,6 +258,7 @@ object Stock {
                     cash = (pooled - minorityPayout).coerceAtLeast(0.0),
                     debt = a.debt + target.debt + financed,
                     shares = acquirerShares,
+                    issuedTotal = acquirerIssuedTotal,
                     slots = mergedSlots,
                     holdings = mergedHoldings,
                     businesses = mergedBusinesses,

@@ -1088,6 +1088,43 @@ class RegressionTest {
     }
 
     @Test
+    fun `자사주 소각이 증자 여력을 갉아먹지 않는다`() {
+        // 평생 한도는 `shares - issuedTotal` 을 원래 주식 수로 읽는다. 합병에서 자사주를
+        // 소각할 때 shares 만 줄이면 그 기준이 어긋나 인수사가 멀쩡한 여력을 잃는다.
+        var s = fresh().withAirline2("hanseong") {
+            it.copy(results = List(4) { i -> QuarterResult(turn = i, net = 50e6) }, cash = 500e9)
+        }
+        val issued = Actions.maxIssuable(s.player)
+        s = Actions.execute(s, Command.IssueShares("hanseong", issued))
+            .also { assertTrue(it.ok, it.message) }.state
+        val roomBefore = Actions.lifetimeIssueRoom(s.player)
+        val originalBefore = s.player.shares - s.player.issuedTotal
+        val sharesBefore = s.player.shares
+
+        // 상대가 우리 주식을 크게 들고 있는 상태에서 인수한다 → 자사주 소각이 일어난다.
+        val victimId = s.livingAirlines.first { it.id != "hanseong" }.id
+        val treasury = sharesBefore * 0.2
+        s = s.withAirline2(victimId) { it.copy(holdings = it.holdings + ("hanseong" to treasury)) }
+        val victimShares = s.airline(victimId).shares
+        s = s.withAirline2("hanseong") { it.copy(holdings = it.holdings + (victimId to victimShares * 0.6)) }
+        s = Stock.settleTakeovers(s)
+
+        assertFalse(s.airlineOrNull(victimId)?.alive == true, "인수가 성립하지 않아 소각이 안 일어났다")
+        val after = s.player
+        assertTrue(after.shares < sharesBefore, "자사주가 소각되지 않았다 — 테스트 전제가 깨졌다")
+        // 소각한 만큼 issuedTotal 도 함께 줄이므로 (S-c) - (I-c) = S-I — 기준은 그대로다.
+        assertEquals(
+            originalBefore,
+            after.shares - after.issuedTotal,
+            "소각 뒤 원래 주식 수 기준이 어긋났다",
+        )
+        assertTrue(
+            Actions.lifetimeIssueRoom(after) >= roomBefore,
+            "자사주 소각이 증자 여력을 갉아먹었다 (${Actions.lifetimeIssueRoom(after)} < $roomBefore)",
+        )
+    }
+
+    @Test
     fun `끈질기게 매집하면 증자 방어를 뚫고 인수할 수 있다`() {
         // 실제 플레이에서 나온 증상: 상대가 매 분기 증자로 희석해 지분이 33% 에서 수렴하고
         // 인수가 **산술적으로** 불가능했다 — 방어가 분기 30%, 매집이 분기 10% 였기 때문이다.

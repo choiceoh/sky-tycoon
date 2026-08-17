@@ -132,47 +132,71 @@ def main() -> int:
     src = Path(sys.argv[1])
     data = json.loads(src.read_text())
 
-    rings: list[list[list[float]]] = []
+    # 폴리곤 하나 = [겉테두리, 구멍...]. 구멍을 버리면 카스피해가 육지로 칠해진다
+    # (이 데이터셋의 내부 링은 카스피해 하나뿐이다 — 오대호는 구멍이 아니라
+    # 겉테두리가 호안을 따라 돌아가므로 그냥 나온다).
+    # MapView 가 even-odd 로 채우므로 링을 묶어서 넘긴다.
+    polygons: list[list[list[list[float]]]] = []
     for feat in data["features"]:
         geom = feat["geometry"]
         polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
         for poly in polys:
-            # 겉테두리만 쓴다 (구멍은 MapView 가 그대로 채우므로 표현할 수 없다 — 카스피해
-            # 같은 내해는 어차피 별도 폴리곤이 아니라 구멍이라 빠진다).
-            rings.append(poly[0])
+            polygons.append(poly)
 
-    kept: list[list[tuple[float, float]]] = []
-    for ring in rings:
-        ys = [p[1] for p in ring]
-        if max(ys) < LAT_BOTTOM or min(ys) > LAT_TOP:
-            continue  # 남극 등 화면 밖
-        if ring_area(ring) < MIN_AREA and not near_kept(ring):
-            continue
+    def prep(ring: list[list[float]]) -> list[tuple[float, float]] | None:
         pts = [(float(p[0]), float(p[1])) for p in ring]
         simple = simplify(pts, TOLERANCE)
         if len(simple) < 4:
-            continue
-        # 폴리곤을 닫아 둔다.
+            return None
         if simple[0] != simple[-1]:
             simple.append(simple[0])
-        kept.append(simple)
+        return simple
 
-    kept.sort(key=lambda r: -ring_area([[x, y] for x, y in r]))
+    kept: list[list[list[tuple[float, float]]]] = []
+    for poly in polygons:
+        outer = poly[0]
+        ys = [p[1] for p in outer]
+        if max(ys) < LAT_BOTTOM or min(ys) > LAT_TOP:
+            continue  # 남극 등 화면 밖
+        if ring_area(outer) < MIN_AREA and not near_kept(outer):
+            continue
+        simple_outer = prep(outer)
+        if simple_outer is None:
+            continue
+        rings = [simple_outer]
+        for hole in poly[1:]:
+            # 아주 작은 구멍은 화면에서 안 보이니 버린다 (점만 늘린다).
+            if ring_area(hole) < MIN_AREA:
+                continue
+            simple_hole = prep(hole)
+            if simple_hole is not None:
+                rings.append(simple_hole)
+        kept.append(rings)
+
+    kept.sort(key=lambda p: -ring_area([[x, y] for x, y in p[0]]))
 
     # ---- 델타 부호화 (0.01° 양자화) ----
+    # 폴리곤끼리는 ';', 한 폴리곤 안의 링끼리는 '|' 로 나눈다. 델타는 링마다 0 에서
+    # 다시 시작한다 — 링 하나만 떼어 봐도 복원되도록.
     parts: list[str] = []
     total_pts = 0
-    for ring in kept:
-        nums: list[int] = []
-        px = py = 0
-        for x, y in ring:
-            qx = int(round(x * 100))
-            qy = int(round(y * 100))
-            nums.append(qx - px)
-            nums.append(qy - py)
-            px, py = qx, qy
-        total_pts += len(ring)
-        parts.append(",".join(str(n) for n in nums))
+    total_holes = 0
+    for rings in kept:
+        ring_strs: list[str] = []
+        for ri, ring in enumerate(rings):
+            nums: list[int] = []
+            px = py = 0
+            for x, y in ring:
+                qx = int(round(x * 100))
+                qy = int(round(y * 100))
+                nums.append(qx - px)
+                nums.append(qy - py)
+                px, py = qx, qy
+            total_pts += len(ring)
+            if ri > 0:
+                total_holes += 1
+            ring_strs.append(",".join(str(n) for n in nums))
+        parts.append("|".join(ring_strs))
     encoded = ";".join(parts)
 
     # 클래스 파일 문자열 상수 한도(64KB, UTF-8 바이트)를 넘지 않게 조각낸다.
@@ -190,9 +214,10 @@ def main() -> int:
     lines.append("/**")
     lines.append(" * 지도 배경용 실제 해안선 (Natural Earth 50m 를 단순화한 것).")
     lines.append(" *")
-    lines.append(f" * 폴리곤 {len(kept)}개 · 점 {total_pts}개. 좌표는 0.01°(약 1.1km)로 양자화하고 델타로")
-    lines.append(" * 부호화해 문자열에 담았다 — 거대한 배열 리터럴은 바이트코드 한도에 걸리고, 문자열")
-    lines.append(" * 상수 하나도 64KB 를 넘을 수 없어 조각으로 나눠 뒀다. 첫 접근에서 한 번만 푼다.")
+    lines.append(f" * 폴리곤 {len(kept)}개 · 점 {total_pts}개 · 내부 링(내해) {total_holes}개.")
+    lines.append(" * 좌표는 0.01°(약 1.1km)로 양자화하고 델타로 부호화해 문자열에 담았다 — 거대한 배열")
+    lines.append(" * 리터럴은 바이트코드 한도에 걸리고, 문자열 상수 하나도 64KB 를 넘을 수 없어 조각으로")
+    lines.append(" * 나눠 뒀다. 첫 접근에서 한 번만 푼다.")
     lines.append(" */")
     lines.append("object WorldShapes {")
     lines.append("")
@@ -201,26 +226,38 @@ def main() -> int:
         lines.append(f'        "{c}"')
     lines.append("")
     joined = " + ".join(f"D{i}" for i in range(len(chunks)))
-    lines.append("    /** 각 폴리곤은 (경도, 위도) 쌍이 번갈아 들어간 닫힌 단순 다각형. */")
-    lines.append("    val landmasses: List<DoubleArray> by lazy(LazyThreadSafetyMode.NONE) { decode() }")
+    lines.append("    /**")
+    lines.append("     * 육지 하나. [rings] 의 첫 항목이 겉테두리, 나머지는 구멍(카스피해 같은 내해)이다.")
+    lines.append("     * 각 링은 (경도, 위도) 쌍이 번갈아 들어간 닫힌 고리 — 구멍이 있으므로 그리는 쪽은")
+    lines.append("     * even-odd 로 채워야 한다. 단순 채움으로 그리면 내해가 육지로 칠해진다.")
+    lines.append("     */")
+    lines.append("    class Landmass(val rings: List<DoubleArray>) {")
+    lines.append("        val outer: DoubleArray get() = rings[0]")
+    lines.append("    }")
     lines.append("")
-    lines.append("    private fun decode(): List<DoubleArray> {")
+    lines.append("    val landmasses: List<Landmass> by lazy(LazyThreadSafetyMode.NONE) { decode() }")
+    lines.append("")
+    lines.append("    private fun decode(): List<Landmass> {")
     lines.append(f"        val src = {joined}")
     lines.append("        return src.split(';').map { poly ->")
-    lines.append("            val nums = poly.split(',')")
-    lines.append("            val out = DoubleArray(nums.size)")
-    lines.append("            var x = 0")
-    lines.append("            var y = 0")
-    lines.append("            var i = 0")
-    lines.append("            while (i < nums.size) {")
-    lines.append("                x += nums[i].toInt()")
-    lines.append("                y += nums[i + 1].toInt()")
-    lines.append("                out[i] = x / 100.0")
-    lines.append("                out[i + 1] = y / 100.0")
-    lines.append("                i += 2")
-    lines.append("            }")
-    lines.append("            out")
+    lines.append("            Landmass(poly.split('|').map { ring -> decodeRing(ring) })")
     lines.append("        }")
+    lines.append("    }")
+    lines.append("")
+    lines.append("    private fun decodeRing(ring: String): DoubleArray {")
+    lines.append("        val nums = ring.split(',')")
+    lines.append("        val out = DoubleArray(nums.size)")
+    lines.append("        var x = 0")
+    lines.append("        var y = 0")
+    lines.append("        var i = 0")
+    lines.append("        while (i < nums.size) {")
+    lines.append("            x += nums[i].toInt()")
+    lines.append("            y += nums[i + 1].toInt()")
+    lines.append("            out[i] = x / 100.0")
+    lines.append("            out[i + 1] = y / 100.0")
+    lines.append("            i += 2")
+    lines.append("        }")
+    lines.append("        return out")
     lines.append("    }")
     lines.append("")
     lines.append("    /** 지도에서 잘라 쓸 위도 범위. 남극은 노선이 없으니 버린다. */")
