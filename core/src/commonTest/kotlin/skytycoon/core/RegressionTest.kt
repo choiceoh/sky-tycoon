@@ -1049,13 +1049,119 @@ class RegressionTest {
         var s = fresh()
         val losing = List(4) { QuarterResult(turn = it, net = -50e6) }
         s = s.withAirline2("hanseong") { it.copy(results = losing) }
-        assertFalse(Actions.canIssueShares(s.player))
+        assertFalse(Actions.canIssueShares(s, s.player))
         val r = Actions.execute(s, Command.IssueShares("hanseong", 1e6))
         assertFalse(r.ok, "적자 회사가 증자로 방어할 수 있으면 안 된다")
 
         // 흑자로 돌아서면 다시 열린다.
         s = s.withAirline2("hanseong") { it.copy(results = List(4) { i -> QuarterResult(turn = i, net = 50e6) }) }
         assertTrue(Actions.execute(s, Command.IssueShares("hanseong", 1e6)).ok)
+    }
+
+    @Test
+    fun `증자에는 쿨다운과 평생 한도가 있다`() {
+        var s = fresh().withAirline2("hanseong") {
+            it.copy(results = List(4) { i -> QuarterResult(turn = i, net = 50e6) })
+        }
+        s = Actions.execute(s, Command.IssueShares("hanseong", 1e6))
+            .also { assertTrue(it.ok, it.message) }.state
+
+        // 바로 다음 분기에는 못 한다 — 쿨다운이 없으면 방어가 매집을 산술적으로 앞지른다.
+        s = s.copy(turn = s.turn + 1)
+        assertFalse(
+            Actions.canIssueShares(s, s.player),
+            "쿨다운 안에 또 증자할 수 있으면 무한 희석이 돌아온다",
+        )
+        assertFalse(Actions.execute(s, Command.IssueShares("hanseong", 1e6)).ok)
+
+        // 쿨다운이 지나면 다시 열린다.
+        s = s.copy(turn = s.turn + Balance.ISSUE_COOLDOWN_QUARTERS)
+        assertTrue(Actions.canIssueShares(s, s.player), Actions.issueBlockReason(s, s.player) ?: "")
+
+        // 평생 한도(원래 주식 수의 DILUTION_LIFETIME_CAP 배)를 다 쓰면 영영 막힌다.
+        val exhausted = s.withAirline2("hanseong") { a ->
+            val original = a.shares - a.issuedTotal
+            a.copy(shares = a.shares + original, issuedTotal = a.issuedTotal + original)
+        }
+        assertEquals(0.0, Actions.lifetimeIssueRoom(exhausted.player))
+        assertFalse(Actions.canIssueShares(exhausted, exhausted.player))
+    }
+
+    @Test
+    fun `자사주 소각이 증자 여력을 갉아먹지 않는다`() {
+        // 평생 한도는 `shares - issuedTotal` 을 원래 주식 수로 읽는다. 합병에서 자사주를
+        // 소각할 때 shares 만 줄이면 그 기준이 어긋나 인수사가 멀쩡한 여력을 잃는다.
+        var s = fresh().withAirline2("hanseong") {
+            it.copy(results = List(4) { i -> QuarterResult(turn = i, net = 50e6) }, cash = 500e9)
+        }
+        val issued = Actions.maxIssuable(s.player)
+        s = Actions.execute(s, Command.IssueShares("hanseong", issued))
+            .also { assertTrue(it.ok, it.message) }.state
+        val roomBefore = Actions.lifetimeIssueRoom(s.player)
+        val originalBefore = s.player.shares - s.player.issuedTotal
+        val sharesBefore = s.player.shares
+
+        // 상대가 우리 주식을 크게 들고 있는 상태에서 인수한다 → 자사주 소각이 일어난다.
+        val victimId = s.livingAirlines.first { it.id != "hanseong" }.id
+        val treasury = sharesBefore * 0.2
+        s = s.withAirline2(victimId) { it.copy(holdings = it.holdings + ("hanseong" to treasury)) }
+        val victimShares = s.airline(victimId).shares
+        s = s.withAirline2("hanseong") { it.copy(holdings = it.holdings + (victimId to victimShares * 0.6)) }
+        s = Stock.settleTakeovers(s)
+
+        assertFalse(s.airlineOrNull(victimId)?.alive == true, "인수가 성립하지 않아 소각이 안 일어났다")
+        val after = s.player
+        assertTrue(after.shares < sharesBefore, "자사주가 소각되지 않았다 — 테스트 전제가 깨졌다")
+        // 소각한 만큼 issuedTotal 도 함께 줄이므로 (S-c) - (I-c) = S-I — 기준은 그대로다.
+        assertEquals(
+            originalBefore,
+            after.shares - after.issuedTotal,
+            "소각 뒤 원래 주식 수 기준이 어긋났다",
+        )
+        assertTrue(
+            Actions.lifetimeIssueRoom(after) >= roomBefore,
+            "자사주 소각이 증자 여력을 갉아먹었다 (${Actions.lifetimeIssueRoom(after)} < $roomBefore)",
+        )
+    }
+
+    @Test
+    fun `끈질기게 매집하면 증자 방어를 뚫고 인수할 수 있다`() {
+        // 실제 플레이에서 나온 증상: 상대가 매 분기 증자로 희석해 지분이 33% 에서 수렴하고
+        // 인수가 **산술적으로** 불가능했다 — 방어가 분기 30%, 매집이 분기 10% 였기 때문이다.
+        var s = fresh()
+        val victimId = s.livingAirlines.first { it.id != "hanseong" }.id
+        // 방어측은 내내 흑자라 적자 게이트에는 절대 걸리지 않는다. 쿨다운과 평생 한도만이
+        // 이 판을 가른다.
+        s = s.withAirline2(victimId) { it.copy(results = List(8) { i -> QuarterResult(turn = i, net = 80e6) }) }
+        s = s.withAirline2("hanseong") { it.copy(cash = 500e9, holdings = emptyMap()) }
+
+        var quarters = 0
+        while (quarters < 40 && s.airlineOrNull(victimId)?.alive == true) {
+            // 공격: 이번 분기에 살 수 있는 만큼 산다.
+            val buy = Stock.affordableShares(s, "hanseong", victimId)
+            if (buy > 0) s = Actions.execute(s, Command.TradeShares("hanseong", victimId, buy)).state
+            s = Stock.settleTakeovers(s)
+            if (s.airlineOrNull(victimId)?.alive != true) break
+
+            // 방어: 할 수 있으면 최대한 희석한다.
+            val victim = s.airline(victimId)
+            if (Actions.canIssueShares(s, victim)) {
+                val issue = Actions.maxIssuable(victim)
+                if (issue > 0) s = Actions.execute(s, Command.IssueShares(victimId, issue)).state
+            }
+            // 분기 넘김 (매수·증자 분기 한도 리셋).
+            s = s.copy(
+                turn = s.turn + 1,
+                airlines = s.airlines.map { it.copy(boughtThisQuarter = emptyMap(), issuedThisQuarter = 0.0) },
+            )
+            quarters++
+        }
+
+        assertFalse(
+            s.airlineOrNull(victimId)?.alive == true,
+            "40분기를 쏟아부어도 인수가 안 된다 — 증자 방어가 매집을 앞지르고 있다 " +
+                "(지분 ${Stock.ownershipRatio(s, "hanseong", victimId)})",
+        )
     }
 
     // ------------------------------------------------------------ 일시 효과 중첩

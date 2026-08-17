@@ -77,16 +77,17 @@ fun MarketScreen(vm: GameViewModel, wide: Boolean) {
             }
             VSpace(10)
             val issue = Actions.maxIssuable(player)
-            // 연간 적자면 증자를 인수해 줄 곳이 없다 — 눌러야 실패를 알려주는 버튼은 UI 가 아니다.
-            val canIssue = Actions.canIssueShares(player)
+            // 막힌 이유를 명령 계층에서 그대로 받아 온다 — 눌러야 실패를 알려주는 버튼은 UI 가
+            // 아니고, UI 가 조건을 따로 판단하면 두 곳이 어긋난다.
+            val blocked = Actions.issueBlockReason(s, player)
             OutlinedButton(
                 onClick = { vm.run(Command.IssueShares(player.id, issue)) },
-                enabled = canIssue && issue > 0,
+                enabled = blocked == null && issue > 0,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    if (!canIssue) {
-                        "유상증자 불가 — 연간 적자"
+                    if (blocked != null) {
+                        "유상증자 불가"
                     } else {
                         "유상증자 ${money(issue)}주 → ${moneyShort(issue * player.sharePrice * Balance.ISSUE_DISCOUNT)}"
                     },
@@ -94,13 +95,10 @@ fun MarketScreen(vm: GameViewModel, wide: Boolean) {
                 )
             }
             Text(
-                if (!canIssue) {
-                    "최근 4분기 합산이 적자라 증자를 받아줄 곳이 없습니다. " +
-                        "실적을 되돌리기 전에는 경영권을 지분 희석으로 지킬 수 없습니다."
-                } else {
-                    "자금을 조달하면서 적대적 지분을 희석합니다. 다만 내 주식 가치도 나뉩니다."
-                },
-                color = if (!canIssue) Coral else TextLow,
+                blocked
+                    ?: ("자금을 조달하면서 적대적 지분을 희석합니다. 다만 내 주식 가치도 나뉩니다. " +
+                        "남은 누적 희석 여력 ${money(Actions.lifetimeIssueRoom(player))}주."),
+                color = if (blocked != null) Coral else TextLow,
                 fontSize = 11.sp,
             )
         }

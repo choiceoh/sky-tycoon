@@ -13,6 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -136,15 +137,20 @@ fun WorldMap(
         drawRect(Ocean, size = size)
         drawGraticule(t)
 
-        for (poly in WorldShapes.landmasses) {
+        for (land in WorldShapes.landmasses) {
             val path = Path()
-            var i = 0
-            while (i < poly.size) {
-                val p = t.px(poly[i], poly[i + 1])
-                if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
-                i += 2
+            // 겉테두리와 구멍을 한 Path 에 담고 even-odd 로 채운다. 기본 채움으로 두면
+            // 카스피해 같은 내해가 육지로 칠해진다.
+            path.fillType = PathFillType.EvenOdd
+            for (ring in land.rings) {
+                var i = 0
+                while (i < ring.size) {
+                    val p = t.px(ring[i], ring[i + 1])
+                    if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
+                    i += 2
+                }
+                path.close()
             }
-            path.close()
             drawPath(path, Land)
             drawPath(path, LandEdge, style = Stroke(width = 1f))
         }

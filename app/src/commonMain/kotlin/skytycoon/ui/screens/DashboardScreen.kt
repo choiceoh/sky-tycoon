@@ -236,12 +236,10 @@ private fun buildAlerts(s: GameState): List<Alert> {
     if (threat != null && threat.second >= 0.10) {
         out += Alert(
             "${threat.first.name}이 지분 ${percent(threat.second)} 보유",
-            // 적자면 증자 자체가 막힌다 — 못 하는 수를 권하면 안 된다.
-            if (Actions.canIssueShares(player)) {
-                "50%를 넘기면 회사를 잃습니다. 유상증자로 희석하세요."
-            } else {
-                "50%를 넘기면 회사를 잃습니다. 적자라 증자가 막혀 있으니 실적부터 되돌리세요."
-            },
+            // 증자가 막혀 있으면 못 하는 수를 권하지 않고 막힌 사유를 그대로 보여준다.
+            Actions.issueBlockReason(s, player)
+                ?.let { "50%를 넘기면 회사를 잃습니다. $it" }
+                ?: "50%를 넘기면 회사를 잃습니다. 유상증자로 희석하세요.",
             Coral,
             Tab.MARKET,
         )

@@ -60,9 +60,21 @@ fun FleetScreen(vm: GameViewModel, wide: Boolean) {
             market(Modifier.width(430.dp).fillMaxHeight().padding(12.dp))
         }
     } else {
+        // 폰 세로에서 위아래로 반씩 나눠 쓰면 기재 시장 목록이 서너 줄만 보여
+        // 고르기가 답답하다. 한 번에 하나만 **전체 높이**로 보여준다.
+        var showMarket by remember { mutableStateOf(false) }
+        val ownedCount = vm.game.planesOf(vm.game.playerId).size
         Column(Modifier.fillMaxSize()) {
-            owned(Modifier.fillMaxWidth().weight(1f).padding(12.dp))
-            market(Modifier.fillMaxWidth().weight(1f).padding(12.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // 한글도 식별자 문자라 `$ownedCount대` 는 변수명으로 붙어 버린다 — 중괄호 필수.
+                Chip("보유 ${ownedCount}대", selected = !showMarket, onClick = { showMarket = false })
+                Chip("기재 시장", selected = showMarket, accent = Amber, onClick = { showMarket = true })
+            }
+            val pane = Modifier.fillMaxWidth().weight(1f).padding(12.dp)
+            if (showMarket) market(pane) else owned(pane)
         }
     }
 }

@@ -132,7 +132,10 @@ object Actions {
      */
     fun maxIssuable(airline: Airline): Double {
         val atQuarterStart = airline.shares - airline.issuedThisQuarter
-        return (atQuarterStart * 0.30 - airline.issuedThisQuarter).coerceAtLeast(0.0)
+        val perQuarter = (atQuarterStart * 0.30 - airline.issuedThisQuarter).coerceAtLeast(0.0)
+        // 평생 한도가 남은 만큼으로도 함께 묶인다 — 분기 한도만 보면 캠페인이 길어질수록
+        // 방어측이 다시 무한히 희석할 수 있다.
+        return minOf(perQuarter, lifetimeIssueRoom(airline))
     }
 
     /** 여러 명령을 순서대로. 하나라도 실패하면 그 지점까지의 상태와 실패 사유를 돌려준다. */
@@ -680,28 +683,46 @@ object Actions {
     }
 
     /**
-     * 적자 회사의 증자는 시장이 받아주지 않는다.
+     * 증자를 막는 이유 — 막을 이유가 없으면 null.
      *
-     * 게임 규칙으로서 더 중요한 이유: 이 제한이 없으면 지분을 25% 넘게 모으는 순간
-     * 상대가 증자로 희석해 버려 **인수합병이 구조적으로 불가능해진다**. 실제로
-     * 20년 캠페인에서 인수가 한 건도 일어나지 않았다. "실적이 무너진 회사는 방어할
-     * 수단을 잃는다"로 두면, 경영을 잘해야 경영권을 지킨다는 압박이 생긴다.
+     * 불리언이 아니라 사유를 돌려준다. UI 는 버튼을 잠그면서 **왜** 잠겼는지 같은 문장으로
+     * 보여줘야 하고, 두 곳이 각자 판단하면 어긋난다 (이 프로젝트에서 이미 여러 번 겪었다).
+     *
+     * 세 겹으로 막는다. 적자 제한만으로는 부족했다 — 흑자면 매 분기 30% 를 찍어낼 수 있어서,
+     * 분기 10% 인 매집이 지분율 33% 에서 수렴하고 인수가 산술적으로 불가능해졌다.
+     * 쿨다운(연 1회)이 그 부등호를 뒤집고, 평생 한도가 캠페인이 길어져도 방어가 다시
+     * 무한해지지 않게 한다.
      */
-    fun canIssueShares(airline: Airline): Boolean =
-        airline.results.size < 4 || airline.results.takeLast(4).sumOf { it.net } >= 0
+    fun issueBlockReason(state: GameState, airline: Airline): String? {
+        val annualLoss = airline.results.size >= 4 && airline.results.takeLast(4).sumOf { it.net } < 0
+        if (annualLoss) return "연간 적자라 증자를 인수해 줄 곳이 없습니다. 실적을 되돌린 뒤 다시 시도하세요."
+
+        val since = airline.lastIssueTurn?.let { state.turn - it }
+        if (since != null && since < Balance.ISSUE_COOLDOWN_QUARTERS) {
+            val left = Balance.ISSUE_COOLDOWN_QUARTERS - since
+            return "증자는 ${Balance.ISSUE_COOLDOWN_QUARTERS}분기에 한 번만 할 수 있습니다 (${left}분기 남음)."
+        }
+        if (lifetimeIssueRoom(airline) <= 0.0) {
+            return "누적 희석 한도를 다 썼습니다 — 증자로는 더 이상 방어할 수 없습니다."
+        }
+        return null
+    }
+
+    fun canIssueShares(state: GameState, airline: Airline): Boolean = issueBlockReason(state, airline) == null
+
+    /** 캠페인 전체를 통틀어 앞으로 더 찍어낼 수 있는 신주 수. */
+    fun lifetimeIssueRoom(airline: Airline): Double {
+        val original = (airline.shares - airline.issuedTotal).coerceAtLeast(1.0)
+        return (original * Balance.DILUTION_LIFETIME_CAP - airline.issuedTotal).coerceAtLeast(0.0)
+    }
 
     private fun issueShares(state: GameState, airline: Airline, cmd: Command.IssueShares): ActionResult {
         if (cmd.shares <= 0) return ActionResult.fail(state, "발행 주식 수가 올바르지 않습니다.")
-        if (!canIssueShares(airline)) {
-            return ActionResult.fail(
-                state,
-                "연간 적자 상태에서는 증자를 인수해 줄 곳이 없습니다. 실적을 되돌린 뒤 다시 시도하세요.",
-            )
-        }
+        issueBlockReason(state, airline)?.let { return ActionResult.fail(state, it) }
         val limit = maxIssuable(airline)
         if (limit <= 0.0) return ActionResult.fail(state, "이번 분기 증자 한도를 이미 다 썼습니다.")
         if (cmd.shares > limit) {
-            return ActionResult.fail(state, "이번 분기에 더 발행할 수 있는 물량은 ${(limit / 1e6).toInt()}백만 주입니다.")
+            return ActionResult.fail(state, "지금 발행할 수 있는 물량은 ${(limit / 1e6).toInt()}백만 주입니다.")
         }
         val proceeds = cmd.shares * airline.sharePrice * Balance.ISSUE_DISCOUNT
         // 주가 재산정은 execute 가 모든 명령에 대해 한 번에 해 준다.
@@ -710,6 +731,8 @@ object Actions {
                 cash = it.cash + proceeds,
                 shares = it.shares + cmd.shares,
                 issuedThisQuarter = it.issuedThisQuarter + cmd.shares,
+                issuedTotal = it.issuedTotal + cmd.shares,
+                lastIssueTurn = state.turn,
             )
         }
         return ActionResult(
