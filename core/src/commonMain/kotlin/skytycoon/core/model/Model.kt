@@ -292,7 +292,8 @@ data class QuarterResult(
     val totalRevenue get() = revenue + cargoRevenue + businessIncome
     val operatingCost
         get() = fuelCost + crewCost + maintCost + landingCost +
-            paxServiceCost + distributionCost + overhead + adSpend + depreciation + extraordinaryCost
+            paxServiceCost + distributionCost + overhead + slotRent +
+            adSpend + depreciation + extraordinaryCost
     val loadFactor get() = if (asks <= 0) 0.0 else (rpk / asks).coerceAtMost(1.0)
 }
 
@@ -431,10 +432,20 @@ data class GameState(
     fun freeSlots(airlineId: String, city: String) =
         airline(airlineId).slotsAt(city) - usedSlots(airlineId, city)
 
+    /**
+     * 이 공항의 총 슬롯 (기본 + 확장).
+     *
+     * 다섯 군데서 `city.slots + extraSlots` 를 각자 더하고 있었다 — 한 곳만 빠뜨려도
+     * 확장한 공항에서 점유율이 1.0 을 넘는 식으로 조용히 어긋난다. 한 군데서 답한다.
+     */
+    fun totalSlots(cityId: String): Int {
+        val base = skytycoon.core.data.Cities[cityId].slots
+        return base + (cityState[cityId]?.extraSlots ?: 0)
+    }
+
     /** 도시의 미분양 슬롯 */
     fun unsoldSlots(city: City): Int {
-        val extra = cityState[city.id]?.extraSlots ?: 0
         val taken = airlines.filter { it.alive }.sumOf { it.slotsAt(city.id) }
-        return (city.slots + extra - taken).coerceAtLeast(0)
+        return (totalSlots(city.id) - taken).coerceAtLeast(0)
     }
 }

@@ -158,4 +158,42 @@ class ActionsTest {
             assertTrue(s.outcome != null)
         }
     }
+
+    // ------------------------------------------------------------ 슬롯 반납
+
+    @Test
+    fun `놀리는 슬롯만 반납할 수 있다`() {
+        var s = fresh()
+        val city = s.player.slots.keys.first { s.freeSlots("hanseong", it) > 0 }
+        val before = s.player.slotsAt(city)
+        val idle = s.freeSlots("hanseong", city)
+
+        // 놀고 있는 것보다 많이 반납하려 하면 거절한다.
+        val tooMany = Actions.execute(s, Command.ReleaseSlots("hanseong", city, idle + 1))
+        assertFalse(tooMany.ok, "쓰는 슬롯까지 반납할 수 있으면 노선이 슬롯 없이 남는다")
+        assertEquals(before, tooMany.state.player.slotsAt(city), "실패했는데 슬롯이 줄었다")
+
+        // 놀고 있는 만큼은 반납된다.
+        val ok = Actions.execute(s, Command.ReleaseSlots("hanseong", city, idle))
+        assertTrue(ok.ok, ok.message)
+        assertEquals(before - idle, ok.state.player.slotsAt(city))
+        s = ok.state
+        // 다 반납하고 나면 더 내놓을 게 없다.
+        assertFalse(Actions.execute(s, Command.ReleaseSlots("hanseong", city, 1)).ok)
+        assertTrue(s.player.slotsAt(city) >= 0, "슬롯이 음수가 됐다")
+    }
+
+    @Test
+    fun `슬롯을 반납하면 임차료가 줄어든다`() {
+        val s = fresh()
+        val city = s.player.slots.keys.first { s.freeSlots("hanseong", it) > 0 }
+        val idle = s.freeSlots("hanseong", city)
+        val before = Economics.slotRentTotal(s, s.player)
+        val after = Actions.execute(s, Command.ReleaseSlots("hanseong", city, idle))
+            .also { assertTrue(it.ok, it.message) }.state
+        assertTrue(
+            Economics.slotRentTotal(after, after.player) < before,
+            "슬롯을 반납했는데 임차료가 그대로다 — 반납할 이유가 없어진다",
+        )
+    }
 }

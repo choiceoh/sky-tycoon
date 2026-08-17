@@ -83,8 +83,8 @@ object Market {
             val brand = (airline.brandIn(a.region) + airline.brandIn(b.region)) / 2.0
             // 확장으로 늘어난 슬롯까지 분모에 넣는다. 안 그러면 확장된 공항에서
             // 점유율이 1.0 을 넘어 있지도 않은 지배력 보너스가 붙는다.
-            val capacityA = (a.slots + (state.cityState[a.id]?.extraSlots ?: 0)).coerceAtLeast(1)
-            val capacityB = (b.slots + (state.cityState[b.id]?.extraSlots ?: 0)).coerceAtLeast(1)
+            val capacityA = state.totalSlots(a.id).coerceAtLeast(1)
+            val capacityB = state.totalSlots(b.id).coerceAtLeast(1)
             val hub = (
                 airline.slotsAt(a.id).toDouble() / capacityA +
                     airline.slotsAt(b.id).toDouble() / capacityB
@@ -264,7 +264,8 @@ object Market {
                         val (aId, ra) = spokes[i]
                         val (cId, rc) = spokes[j]
                         if (aId == cId) continue
-                        // 같은 항공사가 A–C 직항을 이미 갖고 있으면 굳이 태워 돌리지 않는다.
+                        // 같은 항공사가 A–C 직항을 갖고 있어도 후보로 둔다. 직항은 1단계에서
+                        // 이미 로컬 수요를 가져갔고, 여기서 채우는 것은 그러고도 남은 좌석이다.
                         val pairKey = Geo.pairKey(aId, cId)
                         val oa = base[ra.id] ?: continue
                         val ob = base[rc.id] ?: continue
@@ -300,27 +301,38 @@ object Market {
         val addPax = HashMap<Int, Double>()
         val addRev = HashMap<Int, Double>()
 
-        for ((pairKey, offers) in candidates) {
+        // 구간별 남은 좌석을 **소비해 가며** 배분한다. 여정 하나는 두 구간의 좌석을
+        // 동시에 먹으므로, 나중에 노선별로 따로 자르면 한쪽만 깎여 "한 승객이 두 구간을
+        // 쓴다"는 전제가 깨진다 (A 구간은 80% 로 줄고 B 구간은 그대로 남는 식).
+        val spareLeft = HashMap(spare)
+        // 도시쌍 순서가 배분에 영향을 주므로 키로 정렬해 결정론을 지킨다 —
+        // 같은 시드가 같은 전개를 재현해야 한다.
+        for (pairKey in candidates.keys.sorted()) {
+            val offers = candidates.getValue(pairKey)
             val (aId, cId) = pairKey.split("|")
-            val a = Cities[aId]
-            val c = Cities[cId]
-            val demand = Demand.quarterly(state, a, c).total
+            val demand = Demand.quarterly(state, Cities[aId], Cities[cId]).total
             if (demand <= 0.0) continue
-            // 직항이 이미 태운 몫은 빠진다. 환승은 어디까지나 남은 수요를 줍는 것이고,
-            // 그마저도 일부만 경유를 감수한다.
-            val unmet = (demand - (localPaxByPair[pairKey] ?: 0.0)).coerceAtLeast(0.0) *
-                Balance.CONNECT_CAPTURE
+            // 직항이 이미 태운 몫은 빠진다. 환승은 남은 수요를 줍는 것이다.
+            val unmet = (demand - (localPaxByPair[pairKey] ?: 0.0)).coerceAtLeast(0.0)
             if (unmet <= 1.0) continue
 
-            // 로짓으로 후보끼리 나눈 뒤, 각 여정의 병목 좌석까지만 태운다.
-            val maxU = offers.maxOf { it.util }
+            // 로짓에 **"환승하지 않는다"는 선택지**를 함께 넣는다. 환승 후보끼리만
+            // 정규화하면 CONNECT_PENALTY 가 모든 항에서 똑같이 빠져 그대로 상쇄되고,
+            // 후보가 하나뿐이면 아무리 비싸고 불편해도 남은 수요를 통째로 가져간다.
+            val maxU = maxOf(offers.maxOf { it.util }, Balance.CONNECT_OUTSIDE_UTIL)
             val weights = offers.map { exp(it.util - maxU) }
-            val sum = weights.sum()
-            if (sum <= 0.0) continue
+            val outside = exp(Balance.CONNECT_OUTSIDE_UTIL - maxU)
+            val denom = weights.sum() + outside
+            if (denom <= 0.0) continue
+
             for ((k, o) in offers.withIndex()) {
-                val want = unmet * (weights[k] / sum)
-                val take = minOf(want, o.spare)
+                val want = unmet * (weights[k] / denom)
+                val roomA = spareLeft[o.legA.routeId] ?: 0.0
+                val roomB = spareLeft[o.legB.routeId] ?: 0.0
+                val take = minOf(want, roomA, roomB)
                 if (take <= 0.0) continue
+                spareLeft[o.legA.routeId] = roomA - take
+                spareLeft[o.legB.routeId] = roomB - take
                 o.pax = take
                 // 수입은 구간 거리로 나눈다 — 긴 구간이 더 가져간다.
                 val total = (o.distA + o.distB).coerceAtLeast(1.0)
@@ -333,13 +345,10 @@ object Market {
         }
         if (addPax.isEmpty()) return base
 
+        // 배분 단계에서 이미 좌석을 소비했으므로 사후 보정이 없다.
         return base.mapValues { (id, o) ->
             val p = addPax[id] ?: return@mapValues o
-            // 여러 도시쌍이 같은 구간을 나눠 쓰므로, 합계가 남은 좌석을 넘지 않게 자른다.
-            val room = (o.seats - o.localPax).coerceAtLeast(0.0)
-            val fitted = p.coerceAtMost(room)
-            val scale = if (p <= 0.0) 0.0 else fitted / p
-            o.copy(connectPax = fitted, connectRevenue = (addRev[id] ?: 0.0) * scale)
+            o.copy(connectPax = p, connectRevenue = addRev[id] ?: 0.0)
         }
     }
 
@@ -362,7 +371,7 @@ object Market {
         val freq = minOf(ra.freq, rc.freq).toDouble()
         val brand = (airline.brandIn(Cities[aId].region) + airline.brandIn(Cities[cId].region)) / 2.0
         val hubCity = Cities[hubId]
-        val hubCap = (hubCity.slots + (state.cityState[hubId]?.extraSlots ?: 0)).coerceAtLeast(1)
+        val hubCap = state.totalSlots(hubId).coerceAtLeast(1)
         val hubGrip = airline.slotsAt(hubId).toDouble() / hubCap
         return -Balance.LEI_PRICE_SENS * 0.5 * logFare -
             Balance.BIZ_PRICE_SENS * 0.5 * logFare +

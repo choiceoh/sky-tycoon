@@ -45,12 +45,15 @@ object Ai {
         s = upgauge(s, airlineId, skill)
         s = manageFleet(s, airlineId, rng, skill)
         s = manageSlots(s, airlineId, rng, skill)
-        s = shedIdleSlots(s, airlineId)
         s = expandAirports(s, airlineId, skill)
         s = openRoutes(s, airlineId, rng, skill)
         s = finance(s, airlineId)
         s = marketing(s, airlineId, skill)
         s = sideBusiness(s, airlineId, rng)
+        // 노선을 다 벌인 **뒤에** 남는 슬롯을 정리한다. 앞에 두면 확장으로 막 받은
+        // 우선 배정분을 openRoutes 가 써 보기도 전에 반납해 버린다 — 큰돈과 6분기를
+        // 들여 얻은 것을 그 자리에서 버리는 셈이다.
+        s = shedIdleSlots(s, airlineId)
         s = stockMoves(s, airlineId, rng, skill)
         return s
     }
@@ -118,7 +121,7 @@ object Ai {
                 val city = Cities[cityId]
                 val extra = state.cityState[cityId]?.extraSlots ?: 0
                 // 완전히 마르기를 기다릴 필요는 없다 — 바닥이 보이면 이미 병목이다.
-                val dry = state.unsoldSlots(city) <= (city.slots + extra) * 0.05
+                val dry = state.unsoldSlots(city) <= state.totalSlots(city.id) * 0.05
                 dry && !Actions.expansionInProgress(state, cityId)
             }
         if (candidates.isEmpty()) return state

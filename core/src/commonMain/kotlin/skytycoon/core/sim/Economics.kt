@@ -185,7 +185,7 @@ object Economics {
     fun slotPrice(state: GameState, airlineId: String, cityId: String): Double {
         val city = Cities[cityId]
         val extra = state.cityState[cityId]?.extraSlots ?: 0
-        val total = (city.slots + extra).toDouble()
+        val total = state.totalSlots(cityId).toDouble()
         val free = state.unsoldSlots(city).toDouble()
         val scarcity = ((total - free + 1.0) / total).coerceIn(0.0, 1.0)
         val airline = state.airlineOrNull(airlineId)
@@ -217,7 +217,10 @@ object Economics {
         val city = Cities[cityId]
         val sizeFactor = (city.econ + city.tour) / 100.0
         val home = if (state.airlineOrNull(airlineId)?.home == cityId) Balance.SLOT_HOME_DISCOUNT else 1.0
-        return Balance.SLOT_RENT_PER_QUARTER * sizeFactor * city.fee * home * state.world.inflation
+        // 난이도 배수를 여기서 곱한다. 결산에서만 곱하면 화면에 뜨는 임차료와 실제
+        // 청구액이 달라져, 플레이어가 잘못된 값으로 슬롯을 잡거나 반납한다.
+        return Balance.SLOT_RENT_PER_QUARTER * sizeFactor * city.fee * home *
+            state.world.inflation * Difficulties[state.difficultyId].costMul
     }
 
     /**
@@ -225,8 +228,7 @@ object Economics {
      * 놀리는 슬롯이 곧 손실이라 노선망을 방치할 수 없게 만드는 항목이다.
      */
     fun slotRentTotal(state: GameState, airline: Airline): Double =
-        airline.slots.entries.sumOf { (city, n) -> n * slotRent(state, airline.id, city) } *
-            Difficulties[state.difficultyId].costMul
+        airline.slots.entries.sumOf { (city, n) -> n * slotRent(state, airline.id, city) }
 
     /** 자기자본 = 현금 + 기재가치 + 슬롯권리금 + 부대사업 − 부채. */
     fun equity(state: GameState, airline: Airline): Double {
