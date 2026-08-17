@@ -109,6 +109,8 @@ object TurnEngine {
 
             val extraordinary = airline.pendingCharges
             val overhead = Economics.overhead(s, airline)
+            // 슬롯은 임차라 매 분기 나간다 — 놀리는 슬롯도 그대로 청구된다.
+            val slotRent = Economics.slotRentTotal(s, airline)
             val depreciation = Economics.depreciation(planes)
             val businessIncome = airline.businesses.sumOf { it.type.income } * s.world.inflation
             val adWanted = airline.adBudget.values.sum()
@@ -116,7 +118,8 @@ object TurnEngine {
             val interestCost = airline.debt * Actions.interestRate(s, airline) / 4.0
 
             val revenue = passengerRevenue + cargoRevenue + businessIncome
-            val pretax = revenue - cost.total - overhead - depreciation - adSpend - interestCost - extraordinary
+            val pretax = revenue - cost.total - overhead - slotRent -
+                depreciation - adSpend - interestCost - extraordinary
             val tax = if (pretax > 0) pretax * Balance.TAX_RATE else 0.0
             val net = pretax - tax
             // 감가상각은 현금이 나가지 않는다.
@@ -134,6 +137,7 @@ object TurnEngine {
                 paxServiceCost = cost.paxService,
                 distributionCost = cost.distribution,
                 overhead = overhead,
+                slotRent = slotRent,
                 adSpend = adSpend,
                 depreciation = depreciation,
                 interestCost = interestCost,

@@ -45,6 +45,7 @@ object Ai {
         s = upgauge(s, airlineId, skill)
         s = manageFleet(s, airlineId, rng, skill)
         s = manageSlots(s, airlineId, rng, skill)
+        s = shedIdleSlots(s, airlineId)
         s = expandAirports(s, airlineId, skill)
         s = openRoutes(s, airlineId, rng, skill)
         s = finance(s, airlineId)
@@ -275,6 +276,23 @@ object Ai {
     // ------------------------------------------------------------- 슬롯
 
     /** 허브에 슬롯 여유가 없으면 확장이 막히므로 미리 사둔다. */
+    /**
+     * 오래 놀리는 슬롯을 반납한다. 슬롯이 분기 임차료를 무는 고정비가 된 뒤로는
+     * 쌓아 두는 것만으로 손실이라, 이 정리가 없으면 AI 가 제 살을 깎으며 버틴다.
+     * 홈 공항은 성장 여지로 조금 남겨 둔다.
+     */
+    private fun shedIdleSlots(state: GameState, airlineId: String): GameState {
+        var s = state
+        val home = s.airline(airlineId).home
+        for (city in s.airline(airlineId).slots.keys.toList()) {
+            val idle = s.freeSlots(airlineId, city)
+            val keep = if (city == home) 6 else 2
+            val drop = idle - keep
+            if (drop > 0) s = cmd(s, Command.ReleaseSlots(airlineId, city, drop))
+        }
+        return s
+    }
+
     private fun manageSlots(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {
         var s = state
         val home = s.airline(airlineId).home

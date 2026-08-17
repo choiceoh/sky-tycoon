@@ -53,6 +53,12 @@ sealed interface Command {
 
     data class BuySlots(override val airlineId: String, val city: String, val count: Int) : Command
 
+    /**
+     * 쓰지 않는 슬롯을 공항에 반납한다. 슬롯이 임차료를 무는 고정비가 된 이상
+     * 되돌릴 길이 없으면 한 번의 과잉 확보가 캠페인 내내 피를 흘리게 만든다.
+     */
+    data class ReleaseSlots(override val airlineId: String, val city: String, val count: Int) : Command
+
     /** 공항 확장 공사에 돈을 댄다. 완공까지 오래 걸리지만 새 슬롯의 절반을 우선 배정받는다. */
     data class FundExpansion(override val airlineId: String, val city: String) : Command
 
@@ -109,6 +115,7 @@ object Actions {
             is Command.TuneRoute -> tuneRoute(state, airline, cmd)
             is Command.AssignPlanes -> assignPlanes(state, airline, cmd)
             is Command.BuySlots -> buySlots(state, airline, cmd)
+            is Command.ReleaseSlots -> releaseSlots(state, airline, cmd)
             is Command.FundExpansion -> fundExpansion(state, airline, cmd)
             is Command.BuyAircraft -> buyAircraft(state, airline, cmd)
             is Command.SellAircraft -> sellAircraft(state, airline, cmd)
@@ -439,6 +446,28 @@ object Actions {
             )
         }
         return ActionResult(next, true, "${city.name} 슬롯 ${cmd.count}개를 확보했습니다.")
+    }
+
+    /**
+     * 슬롯 반납. 취득 수수료는 돌려주지 않는다 — 되사기가 공짜면 임차료를 피해 다니며
+     * 필요할 때만 잡는 무비용 전략이 되어 고정비라는 성격이 사라진다.
+     */
+    private fun releaseSlots(state: GameState, airline: Airline, cmd: Command.ReleaseSlots): ActionResult {
+        val city = Cities.find(cmd.city) ?: return ActionResult.fail(state, "알 수 없는 도시입니다.")
+        if (cmd.count < 1) return ActionResult.fail(state, "1개 이상 반납해야 합니다.")
+        val idle = state.freeSlots(airline.id, city.id)
+        if (idle < cmd.count) {
+            return ActionResult.fail(state, "${city.name}에서 놀고 있는 슬롯은 ${idle}개뿐입니다 (쓰는 슬롯은 노선을 먼저 정리하세요).")
+        }
+        val next = state.withAirline(airline.id) {
+            it.copy(slots = it.slots + (city.id to (it.slotsAt(city.id) - cmd.count).coerceAtLeast(0)))
+        }
+        val saved = Economics.slotRent(state, airline.id, city.id) * cmd.count
+        return ActionResult(
+            next,
+            true,
+            "${city.name} 슬롯 ${cmd.count}개를 반납했습니다 (분기 ${(saved / 1e6).toInt()}백만 달러 절약).",
+        )
     }
 
     // ------------------------------------------------------------------ 기재

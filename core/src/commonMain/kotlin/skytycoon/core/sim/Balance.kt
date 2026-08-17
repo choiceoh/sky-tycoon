@@ -19,7 +19,7 @@ object Balance {
      * 그래서 수요를 게임 스케일로 압축했다 — 간선 노선 하나가 항공사 두세 곳을
      * 먹여 살리는 정도. 승객 1명은 현실의 여러 명에 해당하는 추상 단위로 읽으면 된다.
      */
-    const val DEMAND_K = 3_300.0
+    const val DEMAND_K = 1500.0
     const val DEMAND_BIZ_EXP = 0.55
     const val DEMAND_LEISURE_W = 1.2
     const val DEMAND_DIST_HALF = 1_800.0
@@ -52,10 +52,28 @@ object Balance {
     /** 시장 평균 운임이 표준보다 싸면 수요 자체가 늘어난다 (유발 수요) */
     const val INDUCED_ELASTICITY = 0.45
 
+    // --- 환승 (허브 경유) ---
+    // 직항이 못 채운 좌석을 허브 연결 수요가 메운다. 이 값들이 허브 전략의 수익성을 정한다.
+
+    /** 경유 거리가 직항의 이 배를 넘으면 아무도 안 탄다. */
+    const val CONNECT_MAX_DETOUR = 1.35
+
+    /** 남은 수요 중 경유를 감수하는 비율. 1.0 이면 허브가 직항 시장을 압도해 버린다. */
+    const val CONNECT_CAPTURE = 0.55
+
+    /** 경유 여정의 운임 할인 — 불편한 만큼 싸야 팔린다. */
+    const val CONNECT_FARE_MUL = 0.92
+
+    /** 환승 승객의 수익 계수. 로컬 승객보다 낮다 (연결 할인·수하물 처리). */
+    const val CONNECT_YIELD = 1.05
+
+    /** 경유에 붙는 효용 페널티. 낮추면 허브가 만능이 되고, 높이면 환승이 죽는다. */
+    const val CONNECT_PENALTY = 1.15
+
     // --- 운임 (1970년 명목 달러, 편도 이코노미) ---
     const val FARE_BASE = 22.0
     const val FARE_PER_KM = 0.030
-    const val FARE_DIST_EXP = 0.97
+    const val FARE_DIST_EXP = 1.02
     /** 비즈니스/퍼스트가 섞여 생기는 수익 가산 */
     const val BIZ_YIELD = 1.90
     const val LEI_YIELD = 0.95
@@ -93,11 +111,30 @@ object Balance {
     const val ORDER_DELAY_QUARTERS = 2
 
     // --- 슬롯 ---
-    const val SLOT_BASE_PRICE = 0.42e6
+    /**
+     * 슬롯 **취득 수수료**의 기준 단가. 예전에는 이 값이 슬롯 값 전부라 한 번에 크게 나갔다.
+     * 지금은 슬롯을 사는 게 아니라 **임차**하는 것이라, 취득은 가볍고 유지가 무겁다.
+     */
+    const val SLOT_BASE_PRICE = 0.12e6
+
+    /**
+     * 슬롯 1개의 **분기 임차료** 기준 단가 (도시 규모·착륙료·물가가 곱해진다).
+     *
+     * 이 항목이 게임의 성격을 바꾼다. 슬롯이 일시불이던 때는 한 번 사두면 공짜로 굴러가
+     * 노선을 놀려도 손해가 없었다 — 그래서 아무도 적자를 내지 않았고 현금만 쌓였다.
+     * 매 분기 나가는 고정비로 바꾸면 **안 쓰는 슬롯이 곧 손실**이라 정리 압박이 생기고,
+     * 수요가 꺾이는 분기에는 실제로 적자가 난다 (영업 레버리지).
+     */
+    const val SLOT_RENT_PER_QUARTER = 0.052e6
 
     // --- 공항 확장 공사 ---
-    /** 한 번 완공될 때마다 늘어나는 슬롯 수 */
-    const val EXPANSION_SLOTS = 18
+    /**
+     * 한 번 완공될 때마다 늘어나는 슬롯 수.
+     *
+     * 18 개는 너무 적었다 — 6분기를 기다려 큰돈을 넣고도 공항 포화가 그대로라
+     * 확장이 판을 바꾸지 못했다. 허브 하나를 실제로 뚫어 주는 크기여야 한다.
+     */
+    const val EXPANSION_SLOTS = 60
 
     /** 그중 후원사가 공짜로 배정받는 몫 */
     const val EXPANSION_SPONSOR_SHARE = 0.5

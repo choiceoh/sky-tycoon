@@ -240,6 +240,8 @@ data class QuarterResult(
     val paxServiceCost: Double = 0.0,
     val distributionCost: Double = 0.0,
     val overhead: Double = 0.0,
+    /** 슬롯 임차료 — 보유한 슬롯만큼 매 분기 나가는 고정비 */
+    val slotRent: Double = 0.0,
     val adSpend: Double = 0.0,
     val depreciation: Double = 0.0,
     val interestCost: Double = 0.0,
@@ -271,6 +273,7 @@ data class QuarterResult(
         paxServiceCost = paxServiceCost + o.paxServiceCost,
         distributionCost = distributionCost + o.distributionCost,
         overhead = overhead + o.overhead,
+        slotRent = slotRent + o.slotRent,
         adSpend = adSpend + o.adSpend,
         depreciation = depreciation + o.depreciation,
         interestCost = interestCost + o.interestCost,
