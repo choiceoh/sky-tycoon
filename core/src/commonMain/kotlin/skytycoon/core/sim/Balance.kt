@@ -57,8 +57,35 @@ object Balance {
     const val SHARE_PRESTIGE_W = 0.020
     const val SHARE_HUB_W = 0.18
     const val SHARE_SAFETY_W = 0.90
+
+    /**
+     * 양 끝 공항에서 그 회사가 가진 **다른 취항지 수**(로그)의 가중.
+     *
+     * 경쟁 노선에서 승자와 패자를 가르는 축이다. 이게 없으면 같은 구간에 같은 기재를
+     * 띄운 회사들이 브랜드 차이만큼만 갈려 다 같이 낮은 탑승률로 사이좋게 적자를 본다 —
+     * 잘 지어 둔 네트워크가 보상받지 못한다.
+     */
+    const val SHARE_FEED_W = 0.30
+
+    /**
+     * 기반 국가 프리미엄. 홈 공항이 끝점이면 1.0, 같은 권역이면 0.5 가 곱해진다.
+     * 자국 항공사가 자국 노선에서 갖는 인지도·영업망의 이점.
+     */
+    const val SHARE_HOME_W = 0.45
     /** 좌석이 모자라 흘러넘친 수요를 재배분하는 횟수 */
     const val SPILL_ROUNDS = 3
+
+    /**
+     * **로컬 항공사**(모델에 없는 지역 사업자)의 효용. 모든 도시쌍에서 바깥 선택지로 늘 겨룬다.
+     *
+     * 게임의 여덟 회사는 주요 항공사이고, 나머지 수요는 이들이 채우고 있다고 본다.
+     * 이 항이 없으면 수요가 공급을 압도하는 순간 내놓은 좌석이 무조건 팔려 — 운임도
+     * 서비스도 무의미해지고 아무도 적자를 내지 않는다. 실제로 그랬다.
+     *
+     * 값이 높을수록 로컬이 강해 메이저의 탑승률이 낮아진다. 0 은 "평범한 조건의
+     * 메이저와 비슷한 매력"을 뜻한다 (효용은 상대값이라 절대 크기 자체엔 의미가 없다).
+     */
+    const val FRINGE_UTIL = 4.0
     /** 시장 평균 운임이 표준보다 싸면 수요 자체가 늘어난다 (유발 수요) */
     const val INDUCED_ELASTICITY = 0.45
 
@@ -87,7 +114,7 @@ object Balance {
     const val CONNECT_PENALTY = 1.15
 
     // --- 운임 (1970년 명목 달러, 편도 이코노미) ---
-    const val FARE_BASE = 10.0
+    const val FARE_BASE = 7.0
     const val FARE_PER_KM = 0.030
     const val FARE_DIST_EXP = 1.02
     /** 비즈니스/퍼스트가 섞여 생기는 수익 가산 */
@@ -105,7 +132,7 @@ object Balance {
     /** 지상 활주 등으로 블록타임에 더해지는 시간 (편도당) */
     const val BLOCK_TAXI = 0.25
     /** 150석 기준 표준 착륙료 */
-    const val LANDING_BASE = 800.0
+    const val LANDING_BASE = 1000.0
     const val NAV_PER_KM = 0.030
     const val PAX_SERVICE_BASE = 5.5
     const val PAX_SERVICE_PER_LEVEL = 2.2
@@ -151,7 +178,7 @@ object Balance {
      * 매 분기 나가는 고정비로 바꾸면 **안 쓰는 슬롯이 곧 손실**이라 정리 압박이 생기고,
      * 수요가 꺾이는 분기에는 실제로 적자가 난다 (영업 레버리지).
      */
-    const val SLOT_RENT_PER_QUARTER = 0.040e6
+    const val SLOT_RENT_PER_QUARTER = 0.055e6
 
     // --- 공항 확장 공사 ---
     /**

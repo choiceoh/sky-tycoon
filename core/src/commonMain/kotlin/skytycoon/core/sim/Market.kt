@@ -94,10 +94,28 @@ object Market {
                 .filter { it.city == a.id || it.city == b.id }
                 .sumOf { it.type.demandBoost }
 
+            // 양 끝에서 이 회사가 **다른 어디로 더 갈 수 있는가**. 연결편이 많은 회사가
+            // 선택받는다 — 갈아탈 곳이 있고 일정이 틀어져도 대안이 있기 때문이다.
+            // 이게 없으면 노선 하나만 띄운 회사와 허브를 가진 회사가 똑같이 취급돼,
+            // 같은 구간에 붙은 경쟁자들이 다 같이 낮은 탑승률로 사이좋게 적자를 본다.
+            val feed = feedStrength(state, airline.id, a.id, r.id) +
+                feedStrength(state, airline.id, b.id, r.id)
+
+            // 기반 국가 프리미엄 — 자국 적을 단 항공사가 그 나라를 드나드는 손님에게
+            // 갖는 인지도·영업망의 이점. 홈 공항이 끝점이면 온전히, 같은 권역이면 절반.
+            val homeCity = Cities[airline.home]
+            val homeEdge = when {
+                airline.home == a.id || airline.home == b.id -> 1.0
+                homeCity.region == a.region || homeCity.region == b.region -> 0.5
+                else -> 0.0
+            }
+
             val common = Balance.SHARE_BRAND_W * brand +
                 Balance.SHARE_PRESTIGE_W * prestige +
                 Balance.SHARE_HUB_W * hub +
                 Balance.SHARE_SAFETY_W * (airline.safety - 1.0) +
+                Balance.SHARE_FEED_W * feed +
+                Balance.SHARE_HOME_W * homeEdge +
                 bizFacilities
 
             val service = (airline.serviceLevel + r.serviceExtra).toDouble()
@@ -149,8 +167,30 @@ object Market {
     }
 
     /**
-     * 로짓 점유율로 수요를 나누고, 좌석이 모자라 넘친 몫을 여유 있는 곳으로 재배분한다.
-     * [Offer.remaining] 을 소비하며 각 offer 가 실어 나른 인원 배열을 돌려준다.
+     * 이 공항에서 그 항공사가 가진 **다른 취항지 수**를 로그로 눌러 돌려준다.
+     * 이 노선 자신은 세지 않는다 — 자기 자신은 연결편이 아니다.
+     */
+    private fun feedStrength(state: GameState, airlineId: String, cityId: String, selfRouteId: Int): Double {
+        var n = 0
+        for (r in state.routes) {
+            if (r.id == selfRouteId || r.airlineId != airlineId || !r.active || r.freq <= 0) continue
+            if (r.touches(cityId)) n++
+        }
+        return ln(1.0 + n.toDouble())
+    }
+
+    /**
+     * 로짓으로 수요를 나눈다. 후보에는 게임에 등장하는 항공사들뿐 아니라 **로컬 항공사**
+     * ([Balance.FRINGE_UTIL]) 라는 바깥 선택지가 늘 함께 있다.
+     *
+     * 게임에 나오는 여덟 회사는 그 시대의 **주요 항공사**다. 나머지 수요가 비어 있는 게
+     * 아니라, 모델에 없는 지역 항공사들이 낮은 경쟁력으로 실어 나르고 있다고 본다.
+     * 이 가정이 있어야 수요를 실물 규모로 둬도 "내놓은 좌석은 무조건 팔린다"가 되지 않는다 —
+     * 로컬보다 매력이 있어야 팔리고, 그래서 **탑승률이 곧 경쟁력의 함수**가 된다.
+     * 운임을 올리면 손님이 로컬로 새고, 편수·서비스·환승편·브랜드가 좋으면 되찾아 온다.
+     *
+     * 좌석이 모자라 못 태운 몫만 다음 라운드로 넘긴다. 로컬을 택한 손님까지 다시 돌리면
+     * 라운드를 거듭할수록 바깥 선택지가 무력해져(50% 가 93.75% 가 된다) 이 모델이 무너진다.
      */
     private fun allocate(offers: List<Offer>, demand: Double, utility: (Offer) -> Double): DoubleArray {
         val taken = DoubleArray(offers.size)
@@ -163,22 +203,24 @@ object Market {
             if (active.isEmpty()) return@repeat
 
             val utils = active.map { utility(offers[it]) }
-            val maxU = utils.max()
+            val maxU = maxOf(utils.max(), Balance.FRINGE_UTIL)
             val weights = utils.map { exp(it - maxU) }
-            val sum = weights.sum()
-            if (sum <= 0.0) return@repeat
+            val fringe = exp(Balance.FRINGE_UTIL - maxU)
+            val denom = weights.sum() + fringe
+            if (denom <= 0.0) return@repeat
 
-            var served = 0.0
+            var spilled = 0.0
             for ((k, idx) in active.withIndex()) {
-                val want = left * (weights[k] / sum)
+                val want = left * (weights[k] / denom)
                 val o = offers[idx]
                 val give = minOf(want, o.remaining)
                 o.remaining -= give
                 taken[idx] += give
-                served += give
+                // 좌석이 없어 흘린 몫만 다시 돌린다. 로컬을 택한 손님은 이미 떠났다.
+                spilled += want - give
             }
-            if (served <= 1e-9) return@repeat
-            left -= served
+            if (spilled <= 1e-9) return@repeat
+            left = spilled
         }
         return taken
     }
