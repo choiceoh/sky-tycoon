@@ -195,6 +195,19 @@ class BalanceTest {
             hi > lo * 1.4,
             "노선별 로컬 경쟁 강도가 사실상 같다 (점유율 $lo ~ $hi) — 시장을 고를 이유가 없어진다",
         )
+
+        // 그리고 그 차이를 **취항 전에 볼 수 있어야** 한다. 숨겨 두면 편차는 시장을 고르는
+        // 재미가 아니라 돈을 쓰고 나서야 알게 되는 함정이 된다 (노선 계획 화면과
+        // Ai.attractiveness 가 이 값을 쓴다).
+        val labels = Cities.all.flatMap { a ->
+            Cities.all.mapNotNull { b -> if (a.id < b.id) Market.localStrengthLabel(a, b) else null }
+        }
+        val kinds = labels.toSet()
+        println("[로컬경쟁 표시] ${kinds.sorted()} · 분포 ${kinds.associateWith { k -> labels.count { it == k } }}")
+        assertTrue(
+            kinds.size == 3,
+            "로컬 경쟁 강도가 세 단계로 갈리지 않는다 ($kinds) — 표시해도 판단에 쓸 수 없다",
+        )
     }
 
     @Test

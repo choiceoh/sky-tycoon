@@ -47,6 +47,7 @@ import skytycoon.core.sim.Command
 import skytycoon.core.sim.Demand
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Geo
+import skytycoon.core.sim.Market
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
 import skytycoon.ui.Ink
@@ -292,7 +293,7 @@ private fun CityPanel(vm: GameViewModel, city: City, onCompose: (String) -> Unit
                                 existing -> " · 우리 노선"
                                 rivals > 0 -> " · 경쟁 ${rivals}사"
                                 else -> " · 미개척"
-                            },
+                            } + " · 로컬 ${Market.localStrengthLabel(city, dest)}",
                             color = if (!existing && rivals == 0) Mint else TextMid,
                             fontSize = 11.sp,
                         )
@@ -413,6 +414,9 @@ private fun RouteComposer(vm: GameViewModel, from: String, to: String, onDismiss
                             "구간 연 수요",
                             people(Demand.annualEstimate(s, Cities[from], Cities[to])),
                         )
+                        // 로컬 항공사가 센 구간은 같은 수요라도 덜 찬다. 슬롯값을 치르기
+                        // 전에 보여 줘야 "시장을 고른다"가 판단이 된다.
+                        KeyValue("로컬 경쟁", Market.localStrengthLabel(Cities[from], Cities[to]))
                         KeyValue("개설 비용", moneyShort(setupCost), Amber)
                     }
                 }

@@ -12,6 +12,7 @@ import skytycoon.core.model.Plane
 import skytycoon.core.model.Region
 import skytycoon.core.model.Route
 import skytycoon.core.model.Trait
+import kotlin.math.exp
 
 /**
  * 경쟁사 두뇌. 플레이어와 똑같이 [Actions] 를 통해서만 세계를 바꾸므로
@@ -445,7 +446,11 @@ object Ai {
         val airline = state.airline(airlineId)
         val homeBonus = if (a.id == airline.home || b.id == airline.home) 1.35 else 1.0
         val brandBonus = 1.0 + (airline.brandIn(a.region) + airline.brandIn(b.region)) / 400.0
-        return demand / (1.0 + rivalSeats / 1000.0) * homeBonus * brandBonus
+        // 모델에 있는 경쟁자만 세면 절반만 보는 것이다. 로컬 항공사는 어느 구간에나
+        // 있고 세기가 구간마다 다르므로, 로컬이 억센 시장은 그만큼 깎아 본다 —
+        // 이게 없으면 AI 는 편차를 못 읽고 하필 빡센 시장만 골라 들어간다.
+        val local = exp(Market.localStrength(a, b))
+        return demand / (1.0 + rivalSeats / 1000.0) / (1.0 + local) * homeBonus * brandBonus
     }
 
     // ------------------------------------------------------------- 재무·마케팅·부대사업

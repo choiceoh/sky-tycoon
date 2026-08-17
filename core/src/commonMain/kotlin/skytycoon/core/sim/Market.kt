@@ -219,6 +219,32 @@ object Market {
     }
 
     /**
+     * 이 구간 **로컬 항공사가 얼마나 센가**. 취항 전에 시장을 살펴볼 수 있어야 하므로
+     * 밖으로 연다 — 노선 계획 화면과 AI 의 노선 후보 평가가 같은 값을 본다.
+     *
+     * 숨겨 두면 편차가 "돈을 쓰고 나서야 알게 되는 함정"이 된다. 흩어 놓은 이유가
+     * 시장을 고르는 재미인데, 고를 정보가 없으면 그냥 운이다.
+     */
+    fun localStrength(a: City, b: City): Double =
+        fringeUtility(Geo.pairKey(a.id, b.id), Geo.distance(a.id, b.id))
+
+    /**
+     * 로컬 경쟁 강도를 사람이 읽을 수 있는 3단계로. 기준은 [Balance.FRINGE_UTIL] 에서
+     * ±0.5σ — 종분포라 대략 3:4:3 으로 갈린다.
+     */
+    fun localStrengthLabel(a: City, b: City): String {
+        val s = localStrength(a, b)
+        val mid = Balance.FRINGE_UTIL -
+            Balance.FRINGE_DIST_W * ln((Geo.distance(a.id, b.id) / Balance.FRINGE_DIST_REF).coerceAtLeast(1.0))
+        val half = 0.5 * Balance.FRINGE_SIGMA
+        return when {
+            s > mid + half -> "강함"
+            s < mid - half -> "약함"
+            else -> "보통"
+        }
+    }
+
+    /**
      * 문자열 하나에서 **표준정규에 가까운 값**을 결정론적으로 뽑는다 (평균 0, 표준편차 1).
      *
      * 균등난수 넷을 더하는 어윈–홀 방식이다. 정규분포에 충분히 가까우면서 ±3.46σ 로
@@ -444,11 +470,28 @@ object Market {
             // 직항 시장이 남긴 몫만 줍는다. 아무도 취항하지 않은 도시쌍은 1단계를 거치지
             // 않았으므로 수요 전체가 미충족이다.
             val (aId, cId) = pairKey.split("|")
-            val unmet = unmetByPair[pairKey] ?: Demand.quarterly(state, Cities[aId], Cities[cId]).total
+            val direct = unmetByPair[pairKey]
+            val unmet = direct ?: Demand.quarterly(state, Cities[aId], Cities[cId]).total
             if (unmet <= 1.0) continue
-            val maxU = maxOf(offers.maxOf { it.util }, Balance.CONNECT_OUTSIDE_UTIL)
+
+            // 1단계를 아예 안 거친 도시쌍(아무 메이저도 직항하지 않는 곳)에서는 **로컬
+            // 항공사도 함께 겨뤄야 한다**. 스포크끼리의 구간이 대개 여기 해당하는데,
+            // 로컬을 빼면 경유편이 "안 감"만 상대로 이겨서 수요를 통째로 가져간다 —
+            // 직항 시장에는 로컬을 깔아 두고 환승 시장만 무주공산으로 두는 셈이라
+            // 허브 수송량과 수입이 크게 부풀려진다.
+            val fringeU = if (direct == null) {
+                fringeUtility(pairKey, Geo.distance(aId, cId))
+            } else {
+                null // 1단계에서 이미 로컬이 제 몫을 가져갔다. 또 세면 이중 계상이다.
+            }
+            val maxU = maxOf(
+                offers.maxOf { it.util },
+                Balance.CONNECT_OUTSIDE_UTIL,
+                fringeU ?: Balance.CONNECT_OUTSIDE_UTIL,
+            )
             val weights = offers.map { exp(it.util - maxU) }
-            val outside = exp(Balance.CONNECT_OUTSIDE_UTIL - maxU)
+            val outside = exp(Balance.CONNECT_OUTSIDE_UTIL - maxU) +
+                (fringeU?.let { exp(it - maxU) } ?: 0.0)
             if (weights.sum() + outside <= 0.0) continue
             weightsByPair[pairKey] = weights
             outsideByPair[pairKey] = outside
