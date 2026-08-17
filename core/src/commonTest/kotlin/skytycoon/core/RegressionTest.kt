@@ -11,6 +11,7 @@ import skytycoon.core.model.GameState
 import skytycoon.core.model.NewsKind
 import skytycoon.core.model.Order
 import skytycoon.core.model.QuarterResult
+import skytycoon.core.save.Save
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Balance
 import skytycoon.core.sim.Command
@@ -1112,15 +1113,68 @@ class RegressionTest {
         assertFalse(s.airlineOrNull(victimId)?.alive == true, "인수가 성립하지 않아 소각이 안 일어났다")
         val after = s.player
         assertTrue(after.shares < sharesBefore, "자사주가 소각되지 않았다 — 테스트 전제가 깨졌다")
-        // 소각한 만큼 issuedTotal 도 함께 줄이므로 (S-c) - (I-c) = S-I — 기준은 그대로다.
+        // 기준은 창업 주식 수로 따로 들고 있어 소각과 무관하게 그대로다.
+        assertEquals(originalBefore, Actions.dilutionBasis(after), "소각이 희석 기준을 건드렸다")
         assertEquals(
-            originalBefore,
-            after.shares - after.issuedTotal,
-            "소각 뒤 원래 주식 수 기준이 어긋났다",
+            roomBefore,
+            Actions.lifetimeIssueRoom(after),
+            "자사주 소각이 증자 여력을 바꿨다 — 늘어도(한도 부활) 줄어도(방어 수단 상실) 안 된다",
         )
-        assertTrue(
-            Actions.lifetimeIssueRoom(after) >= roomBefore,
-            "자사주 소각이 증자 여력을 갉아먹었다 (${Actions.lifetimeIssueRoom(after)} < $roomBefore)",
+    }
+
+    @Test
+    fun `foundingShares 가 없던 세이브도 희석 한도를 지킨다`() {
+        // 필드를 추가하면서 기본값 0 을 그대로 두면, 이미 증자로 불어난 주식 수가
+        // "원래 주식 수"로 읽혀 평생 한도가 통째로 되살아난다 — 하필 그 세이브가
+        // 무한 증자를 겪던 판이다.
+        var s = fresh().withAirline2("hanseong") {
+            it.copy(results = List(4) { i -> QuarterResult(turn = i, net = 50e6) })
+        }
+        val founding = s.player.foundingShares
+        assertTrue(founding > 0.0, "새 게임은 창업 주식 수를 채워야 한다")
+
+        // 증자를 한 번 한 뒤, 옛 세이브처럼 필드를 지운 JSON 을 만든다.
+        s = Actions.execute(s, Command.IssueShares("hanseong", Actions.maxIssuable(s.player)))
+            .also { assertTrue(it.ok, it.message) }.state
+        val legacyJson = Save.encode(s).replace("\"foundingShares\":${founding}", "\"foundingShares\":0.0")
+        assertTrue(legacyJson.contains("\"foundingShares\":0.0"), "테스트가 필드를 지우지 못했다")
+
+        val loaded = Save.decode(legacyJson)
+        assertEquals(
+            founding,
+            loaded.player.foundingShares,
+            "옛 세이브의 창업 주식 수를 회사 표에서 되살리지 못했다",
+        )
+        assertEquals(
+            Actions.lifetimeIssueRoom(s.player),
+            Actions.lifetimeIssueRoom(loaded.player),
+            "옛 세이브를 불러오자 희석 한도가 달라졌다",
+        )
+    }
+
+    @Test
+    fun `인수해도 평생 희석 한도가 되살아나지 않는다`() {
+        // 소각분만큼 issuedTotal 을 되감던 시절엔 인수할 때마다 한도가 부활해
+        // 평생 한도가 무의미했다. 기준을 따로 들고 issuedTotal 은 누적으로 둔다.
+        var s = fresh().withAirline2("hanseong") {
+            it.copy(results = List(4) { i -> QuarterResult(turn = i, net = 50e6) }, cash = 500e9)
+        }
+        s = s.withAirline2("hanseong") { a ->
+            val room = Actions.lifetimeIssueRoom(a)
+            a.copy(shares = a.shares + room, issuedTotal = a.issuedTotal + room)
+        }
+        assertEquals(0.0, Actions.lifetimeIssueRoom(s.player))
+
+        val victimId = s.livingAirlines.first { it.id != "hanseong" }.id
+        s = s.withAirline2(victimId) { it.copy(holdings = it.holdings + ("hanseong" to s.player.shares * 0.3)) }
+        val victimShares = s.airline(victimId).shares
+        s = s.withAirline2("hanseong") { it.copy(holdings = it.holdings + (victimId to victimShares * 0.6)) }
+        s = Stock.settleTakeovers(s)
+
+        assertEquals(
+            0.0,
+            Actions.lifetimeIssueRoom(s.player),
+            "인수로 자사주를 소각하자 다 쓴 희석 한도가 되살아났다",
         )
     }
 

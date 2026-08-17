@@ -710,11 +710,25 @@ object Actions {
 
     fun canIssueShares(state: GameState, airline: Airline): Boolean = issueBlockReason(state, airline) == null
 
-    /** 캠페인 전체를 통틀어 앞으로 더 찍어낼 수 있는 신주 수. */
+    /**
+     * 캠페인 전체를 통틀어 앞으로 더 찍어낼 수 있는 신주 수.
+     *
+     * 기준은 창업 주식 수 하나뿐이다. `shares - issuedTotal` 로 유도하던 때는 합병에서
+     * 자사주를 소각하면 기준이 어긋났고, 그걸 맞추려 `issuedTotal` 을 되감았더니 이번엔
+     * 인수할 때마다 한도가 되살아났다. 고정 기준을 따로 두면 둘 다 생기지 않는다.
+     */
     fun lifetimeIssueRoom(airline: Airline): Double {
-        val original = (airline.shares - airline.issuedTotal).coerceAtLeast(1.0)
-        return (original * Balance.DILUTION_LIFETIME_CAP - airline.issuedTotal).coerceAtLeast(0.0)
+        val basis = dilutionBasis(airline)
+        return (basis * Balance.DILUTION_LIFETIME_CAP - airline.issuedTotal).coerceAtLeast(0.0)
     }
+
+    /** 희석 한도의 기준 주식 수. 옛 세이브(0)는 지금 주식 수에서 이미 찍은 몫을 뺀 값으로 본다. */
+    fun dilutionBasis(airline: Airline): Double =
+        if (airline.foundingShares > 0.0) {
+            airline.foundingShares
+        } else {
+            (airline.shares - airline.issuedTotal).coerceAtLeast(1.0)
+        }
 
     private fun issueShares(state: GameState, airline: Airline, cmd: Command.IssueShares): ActionResult {
         if (cmd.shares <= 0) return ActionResult.fail(state, "발행 주식 수가 올바르지 않습니다.")
