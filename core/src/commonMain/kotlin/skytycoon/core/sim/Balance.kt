@@ -87,7 +87,7 @@ object Balance {
     const val CONNECT_PENALTY = 1.15
 
     // --- 운임 (1970년 명목 달러, 편도 이코노미) ---
-    const val FARE_BASE = 22.0
+    const val FARE_BASE = 10.0
     const val FARE_PER_KM = 0.030
     const val FARE_DIST_EXP = 1.02
     /** 비즈니스/퍼스트가 섞여 생기는 수익 가산 */
@@ -105,7 +105,7 @@ object Balance {
     /** 지상 활주 등으로 블록타임에 더해지는 시간 (편도당) */
     const val BLOCK_TAXI = 0.25
     /** 150석 기준 표준 착륙료 */
-    const val LANDING_BASE = 520.0
+    const val LANDING_BASE = 800.0
     const val NAV_PER_KM = 0.030
     const val PAX_SERVICE_BASE = 5.5
     const val PAX_SERVICE_PER_LEVEL = 2.2
@@ -128,6 +128,16 @@ object Balance {
 
     // --- 슬롯 ---
     /**
+     * 공항 슬롯 총량 배수 (도시 데이터의 기본값에 곱한다).
+     *
+     * 예전에는 슬롯 총량이 업계 공급을 **수요의 1/10 로 하드캡**해서, 내놓은 좌석이
+     * 언제나 다 팔렸다 — 운임 경쟁도 탑승률 관리도 의미가 없고 아무도 적자를 내지
+     * 않았다. 슬롯을 넉넉히 풀어 그 인위적 상한을 걷어내고, 대신 **분기 임차료**가
+     * 억제 장치를 맡는다. 슬롯은 이제 못 구해서 못 늘리는 게 아니라, 유지비를 감당할
+     * 수 있을 때만 쥐는 것이다.
+     */
+    const val SLOT_SUPPLY_MUL = 1
+    /**
      * 슬롯 **취득 수수료**의 기준 단가. 예전에는 이 값이 슬롯 값 전부라 한 번에 크게 나갔다.
      * 지금은 슬롯을 사는 게 아니라 **임차**하는 것이라, 취득은 가볍고 유지가 무겁다.
      */
@@ -141,7 +151,7 @@ object Balance {
      * 매 분기 나가는 고정비로 바꾸면 **안 쓰는 슬롯이 곧 손실**이라 정리 압박이 생기고,
      * 수요가 꺾이는 분기에는 실제로 적자가 난다 (영업 레버리지).
      */
-    const val SLOT_RENT_PER_QUARTER = 0.052e6
+    const val SLOT_RENT_PER_QUARTER = 0.040e6
 
     // --- 공항 확장 공사 ---
     /**

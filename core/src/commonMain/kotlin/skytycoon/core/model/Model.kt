@@ -439,7 +439,7 @@ data class GameState(
      * 확장한 공항에서 점유율이 1.0 을 넘는 식으로 조용히 어긋난다. 한 군데서 답한다.
      */
     fun totalSlots(cityId: String): Int {
-        val base = skytycoon.core.data.Cities[cityId].slots
+        val base = skytycoon.core.data.Cities[cityId].slots * skytycoon.core.sim.Balance.SLOT_SUPPLY_MUL
         return base + (cityState[cityId]?.extraSlots ?: 0)
     }
 

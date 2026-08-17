@@ -325,22 +325,38 @@ object Market {
             val denom = weights.sum() + outside
             if (denom <= 0.0) continue
 
-            for ((k, o) in offers.withIndex()) {
-                val want = unmet * (weights[k] / denom)
-                val roomA = spareLeft[o.legA.routeId] ?: 0.0
-                val roomB = spareLeft[o.legB.routeId] ?: 0.0
-                val take = minOf(want, roomA, roomB)
-                if (take <= 0.0) continue
-                spareLeft[o.legA.routeId] = roomA - take
-                spareLeft[o.legB.routeId] = roomB - take
-                o.pax = take
-                // 수입은 구간 거리로 나눈다 — 긴 구간이 더 가져간다.
-                val total = (o.distA + o.distB).coerceAtLeast(1.0)
-                val revenue = take * o.fare * Balance.CONNECT_YIELD
-                addPax[o.legA.routeId] = (addPax[o.legA.routeId] ?: 0.0) + take
-                addPax[o.legB.routeId] = (addPax[o.legB.routeId] ?: 0.0) + take
-                addRev[o.legA.routeId] = (addRev[o.legA.routeId] ?: 0.0) + revenue * (o.distA / total)
-                addRev[o.legB.routeId] = (addRev[o.legB.routeId] ?: 0.0) + revenue * (o.distB / total)
+            // 좌석이 모자라 못 태운 몫은 여유 있는 다른 여정으로 흘려보낸다 (직항 시장과
+            // 같은 스필). 이게 없으면 인기 있는 여정이 배정만 받고 못 태운 승객이 그대로
+            // 증발해, 옆에 빈 좌석이 남아도 허브 수송량이 실제보다 적게 잡힌다.
+            var left = unmet
+            repeat(Balance.SPILL_ROUNDS + 1) {
+                if (left <= 1.0) return@repeat
+                val open = offers.indices.filter { i ->
+                    minOf(
+                        spareLeft[offers[i].legA.routeId] ?: 0.0,
+                        spareLeft[offers[i].legB.routeId] ?: 0.0,
+                    ) > 1e-6
+                }
+                if (open.isEmpty()) return@repeat
+                // 남은 후보만으로 다시 정규화한다. 바깥 선택지(환승 안 함)는 계속 겨룬다.
+                val openDenom = open.sumOf { weights[it] } + outside
+                if (openDenom <= 0.0) return@repeat
+                var served = 0.0
+                for (i in open) {
+                    val o = offers[i]
+                    val want = left * (weights[i] / openDenom)
+                    val roomA = spareLeft[o.legA.routeId] ?: 0.0
+                    val roomB = spareLeft[o.legB.routeId] ?: 0.0
+                    val take = minOf(want, roomA, roomB)
+                    if (take <= 0.0) continue
+                    spareLeft[o.legA.routeId] = roomA - take
+                    spareLeft[o.legB.routeId] = roomB - take
+                    o.pax += take
+                    served += take
+                    accumulate(o, take, addPax, addRev)
+                }
+                if (served <= 1e-9) return@repeat
+                left -= served
             }
         }
         if (addPax.isEmpty()) return base
@@ -350,6 +366,22 @@ object Market {
             val p = addPax[id] ?: return@mapValues o
             o.copy(connectPax = p, connectRevenue = addRev[id] ?: 0.0)
         }
+    }
+
+    /** 환승 한 건이 실린 결과를 두 구간에 나눠 적는다. */
+    private fun accumulate(
+        o: ConnectOffer,
+        take: Double,
+        addPax: HashMap<Int, Double>,
+        addRev: HashMap<Int, Double>,
+    ) {
+        // 수입은 구간 거리로 나눈다 — 긴 구간이 더 가져간다.
+        val total = (o.distA + o.distB).coerceAtLeast(1.0)
+        val revenue = take * o.fare * Balance.CONNECT_YIELD
+        addPax[o.legA.routeId] = (addPax[o.legA.routeId] ?: 0.0) + take
+        addPax[o.legB.routeId] = (addPax[o.legB.routeId] ?: 0.0) + take
+        addRev[o.legA.routeId] = (addRev[o.legA.routeId] ?: 0.0) + revenue * (o.distA / total)
+        addRev[o.legB.routeId] = (addRev[o.legB.routeId] ?: 0.0) + revenue * (o.distB / total)
     }
 
     /** 경유 여정의 효용 — 직항보다 확실히 불리해야 허브가 만능이 되지 않는다. */
