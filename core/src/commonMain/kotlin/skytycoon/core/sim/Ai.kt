@@ -519,7 +519,7 @@ object Ai {
             .maxOfOrNull { Stock.ownershipRatio(state, it.id, airlineId) } ?: 0.0
         if (threat < 0.25) return state
         val me = state.airline(airlineId)
-        if (!Actions.canIssueShares(me)) return state
+        if (!Actions.canIssueShares(state, me)) return state
         val issue = Actions.maxIssuable(me) * (if (threat > 0.4) 1.0 else 0.5)
         return cmd(state, Command.IssueShares(airlineId, issue))
     }
