@@ -1,0 +1,84 @@
+name: CI
+
+# 기준 타깃이 안드로이드 폰이므로 APK 조립까지 검증한다. 데스크톱만 컴파일하면
+# settings.gradle.kts 가 SDK 부재 시 :android 를 빌드에서 빼기 때문에,
+# MainActivity·매니페스트·안드로이드 세이브 구현이 한 번도 컴파일되지 않은 채
+# 그린 체크로 머지될 수 있다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # main 푸시마다 nightly 릴리스에 APK 를 갈아 끼운다
+
+jobs:
+  verify:
+    name: core test + desktop compile + APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Simulation tests + UI compile
+        run: ./gradlew :core:jvmTest :app:desktopTest :app:compileKotlinDesktop --no-daemon
+
+      - name: Render screens headlessly
+        run: ./gradlew :app:screenshots --no-daemon
+
+      # ubuntu-latest 러너에는 Android SDK 가 이미 깔려 있어 ANDROID_HOME 만 있으면
+      # settings.gradle.kts 가 :android 를 빌드에 넣는다.
+      - name: Assemble Android APK
+        run: ./gradlew :android:assembleDebug --no-daemon
+
+      - name: Upload rendered screens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens
+          path: app/build/screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
+      # PR 에서도 받아볼 수 있게 아티팩트로 남긴다 (다운로드에 로그인이 필요하고 zip 으로 묶인다).
+      - name: Upload debug APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sky-tycoon-debug-apk
+          path: android/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 14
+
+      # 폰에서 바로 받으려면 릴리스가 낫다 — 로그인도 압축 해제도 필요 없는 고정 URL 이 생긴다.
+      # main 이 갱신될 때마다 같은 `nightly` 태그를 갈아 끼우므로 링크는 변하지 않는다.
+      - name: Publish APK to the rolling nightly release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/build/outputs/apk/debug/*-debug.apk sky-tycoon-debug.apk
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly sky-tycoon-debug.apk \
+            --title "최신 빌드 (nightly)" \
+            --notes "main ${GITHUB_SHA:0:7} 에서 자동 빌드한 디버그 APK 입니다.
+
+          폰에서 \`sky-tycoon-debug.apk\` 를 받아 설치하세요 (알 수 없는 출처 허용 필요).
+          디버그 서명이라 Play 스토어 배포용은 아닙니다." \
+            --prerelease

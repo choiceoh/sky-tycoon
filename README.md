@@ -8,6 +8,12 @@
 **Kotlin Multiplatform + Compose Multiplatform.** 화면 한 벌로 안드로이드와 데스크톱이 함께 돌아간다.
 기준 화면은 **안드로이드 폰 세로**이고, 넓은 화면에서는 사이드 레일 + 2단 레이아웃으로 펼쳐진다.
 
+## 폰에서 바로 해보기
+
+**[최신 APK 내려받기](https://github.com/choiceoh/sky-tycoon/releases/download/nightly/sky-tycoon-debug.apk)**
+— `main` 이 갱신될 때마다 CI 가 다시 올리므로 링크는 그대로다.
+설치하려면 안드로이드에서 "알 수 없는 출처의 앱 설치"를 허용해야 한다 (디버그 서명이라 스토어 배포용은 아니다).
+
 ## 모듈
 
 | 모듈 | 내용 |
@@ -102,6 +108,13 @@ SDK 가 없는 환경(CI 컨테이너 등)에서도 `core` 와 `app`(데스크�
 
 ## CI
 
-`.github/workflows/sky-tycoon.yml` 이 `sky-tycoon/**` 변경 시 `:core:jvmTest` 와
-`:app:compileKotlinDesktop` 을 돌리고, 렌더한 화면 PNG 를 아티팩트로 올린다.
-독립 Gradle 빌드라 루트의 다른 게이트에는 걸리지 않으므로 이 레인이 유일한 자동 검증이다.
+`.github/workflows/ci.yml` 이 모든 PR 과 `main` 푸시에서 돌린다:
+
+1. `:core:jvmTest` · `:app:desktopTest` · `:app:compileKotlinDesktop` — 시뮬레이션 규칙과 공용 UI
+2. `:app:screenshots` — X 서버 없이 주요 화면을 렌더 (PNG 아티팩트)
+3. `:android:assembleDebug` — **APK 조립까지 해야** 안드로이드 전용 코드가 검증된다.
+   러너에 SDK 가 있어 `settings.gradle.kts` 가 `:android` 를 빌드에 넣는다.
+   이 스텝이 없으면 `MainActivity`·매니페스트·안드로이드 세이브 구현이 한 번도 컴파일되지 않은 채
+   그린 체크로 머지될 수 있다.
+
+`main` 푸시에서는 만들어진 APK 를 `nightly` 릴리스에 갈아 끼운다 (위 다운로드 링크가 그것).
