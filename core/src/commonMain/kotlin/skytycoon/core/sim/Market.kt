@@ -189,7 +189,14 @@ object Market {
         var n = 0
         for (r in state.routes) {
             if (r.id == selfRouteId || r.airlineId != airlineId || !r.active || r.freq <= 0) continue
-            if (r.touches(cityId)) n++
+            if (!r.touches(cityId)) continue
+            if (r.planeIds.isEmpty()) continue
+            // 이번 분기에 실제로 못 뜨는 노선은 연결편이 아니다. 반대쪽 공항이 닫혀
+            // resolvePair 가 통째로 건너뛴 노선까지 세면, 한 명도 못 나르는 취항지로
+            // 네트워크 보너스를 받아 폐쇄 기간에 오히려 점유율이 부풀려진다.
+            val other = if (r.from == cityId) r.to else r.from
+            if (state.cityState[other]?.isClosed(state.turn) == true) continue
+            n++
         }
         return ln(1.0 + n.toDouble())
     }

@@ -97,23 +97,21 @@ object Ai {
     /**
      * 돈이 안 되고 손님도 없는 노선은 접는다.
      *
-     * [RouteResult.profit] 에는 **슬롯 임차료가 빠져 있다** — 임차료는 회사 단위로
-     * 한 번에 걷히기 때문이다. 그래서 노선 장부상으로는 조금 남지만 그 노선이 물고
-     * 있는 슬롯의 임차료가 그보다 큰 경우, 회사 전체로는 손해인데도 영영 정리되지
-     * 않는다. `shedIdleSlots` 도 손을 못 댄다 (놀고 있는 슬롯이 아니라 쓰는 중이다).
-     * 그래서 여기서 양 끝 슬롯 임차료를 얹어 **진짜 기여이익**으로 판단한다.
+     * [RouteResult.cost] 에는 그 노선이 물고 있는 슬롯의 임차료가 이미 들어 있다
+     * (TurnEngine.settle 참고). 그래서 여기서 따로 더할 것 없이 [RouteResult.profit]
+     * 만 보면 **슬롯값까지 갚고 남는가**를 판단하는 셈이 된다.
      */
     private fun pruneRoutes(state: GameState, airlineId: String, rng: Rng): GameState {
         var s = state
         for (route in s.routesOf(airlineId)) {
             val last = route.last ?: continue
-            // 주간 왕복 1회에 양 끝 슬롯이 하나씩 필요하다 — 편수가 곧 점유 슬롯 수다.
-            val rent = route.freq * (
-                Economics.slotRent(s, airlineId, route.from) +
-                    Economics.slotRent(s, airlineId, route.to)
-                )
-            val netOfRent = last.profit - rent
-            val hopeless = netOfRent < 0 && last.loadFactor < 0.48
+            // 공항 폐쇄로 아예 못 뜬 분기는 판단 근거가 못 된다. 지금은 결산이 그런
+            // 분기에 빈 결과(원가 0)를 남겨서 아래 부등식이 어차피 안 걸리지만, 임차료를
+            // 노선에 물리는 방식이 바뀌면 곧바로 "화산 한 번에 멀쩡한 간선을 영구히
+            // 접는" 버그가 된다 — 실제로 그렇게 만들었다가 되돌렸다. 명시해 둔다.
+            // 좌석이 0 이면 "띄웠는데 텅 빈" 것이 아니라 아예 못 뜬 것이다.
+            if (last.seats <= 0.0) continue
+            val hopeless = last.profit < 0 && last.loadFactor < 0.48
             if (hopeless && rng.chance(0.45)) {
                 s = cmd(s, Command.CloseRoute(airlineId, route.id))
             }
@@ -305,8 +303,14 @@ object Ai {
         for (city in s.airline(airlineId).slots.keys.toList()) {
             val idle = s.freeSlots(airlineId, city)
             val keep = if (city == home) 6 else 2
-            val drop = idle - keep
-            if (drop > 0) s = cmd(s, Command.ReleaseSlots(airlineId, city, drop))
+            // 남는 몫을 한 번에 다 반납하지 않고 **절반씩** 흘려보낸다.
+            // openRoutes 는 한 턴에 새 노선을 3개까지만 여니, 확장으로 받은 30 슬롯을
+            // 그 턴에 다 쓸 수 없다. 즉시 정리하면 큰돈과 6분기를 들여 얻은 우선
+            // 배정분을 다음 턴이 써 보기도 전에 버린다. 절반씩이면 정말 노는 슬롯은
+            // 몇 턴 안에 정리되면서도, 막 받은 슬롯에는 쓸 시간이 생긴다.
+            val excess = idle - keep
+            val drop = (excess + 1) / 2
+            if (excess > 0 && drop > 0) s = cmd(s, Command.ReleaseSlots(airlineId, city, drop))
         }
         return s
     }

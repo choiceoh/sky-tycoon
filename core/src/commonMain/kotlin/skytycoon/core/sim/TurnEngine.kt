@@ -98,11 +98,20 @@ object TurnEngine {
                 rpk += outcome.pax * dist
                 asks += outcome.seats * dist
 
+                // 이 노선이 물고 있는 슬롯의 임차료를 노선 원가에 얹는다. 임차료는 회사
+                // 단위로 걷히지만 노선 손익에 안 실으면, 화면에도 AI 에게도 "조금 남는
+                // 노선"으로 보인다 — 실제로는 슬롯값이 그보다 커서 회사를 갉아먹는데도.
+                // 주간 왕복 1회에 양 끝 슬롯이 하나씩이므로 편수가 곧 점유 슬롯 수다.
+                // 놀리는 슬롯 몫은 어느 노선에도 귀속시킬 수 없으니 회사 단위로 남는다.
+                val occupiedRent = route.freq * (
+                    Economics.slotRent(s, airline.id, route.from) +
+                        Economics.slotRent(s, airline.id, route.to)
+                    )
                 routeResults[route.id] = RouteResult(
                     pax = outcome.pax,
                     seats = outcome.seats,
                     revenue = gross,
-                    cost = rc.total,
+                    cost = rc.total + occupiedRent,
                     share = outcome.share,
                 )
             }
