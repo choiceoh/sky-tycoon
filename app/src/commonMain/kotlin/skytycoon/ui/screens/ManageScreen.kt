@@ -33,6 +33,7 @@ import skytycoon.core.model.Region
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Command
 import skytycoon.core.sim.Economics
+import skytycoon.core.sim.Balance
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
 import skytycoon.ui.GameViewModel
@@ -45,6 +46,7 @@ import skytycoon.ui.components.KeyValue
 import skytycoon.ui.components.Panel
 import skytycoon.ui.components.RatioBar
 import skytycoon.ui.components.VSpace
+import skytycoon.ui.components.Chip
 import skytycoon.ui.decimals
 import skytycoon.ui.money
 import skytycoon.ui.moneyShort
@@ -115,6 +117,41 @@ fun ManageScreen(vm: GameViewModel, wide: Boolean) {
                         "${player.serviceLevel + 1}등급으로 (${moneyShort(Actions.serviceUpgradeCost(s, player))})",
                     fontSize = 12.sp,
                 )
+            }
+        }
+
+        VSpace(12)
+        Panel(title = "객실 배치") {
+            val share = player.bizShare
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "비즈니스 ${(share * 100).toInt()}%",
+                    color = TextHigh,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Box(Modifier.width(12.dp))
+                RatioBar(share / Balance.BIZ_SHARE_MAX, Amber, Modifier.weight(1f), height = 8)
+            }
+            VSpace(6)
+            Text(
+                "앞자리 한 석이 이코노미 ${decimals(Balance.BIZ_SEAT_SPACE, 1)}석의 바닥을 씁니다. " +
+                    "비중을 올리면 총 좌석이 줄고, 대신 앞자리 손님이 훨씬 비싸게 냅니다. " +
+                    "빈 앞자리도 유지비가 나가니 출장 수요보다 크게 깔면 손해입니다.",
+                color = TextLow,
+                fontSize = 11.sp,
+            )
+            VSpace(8)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (pct in listOf(0, 10, 20, 30)) {
+                    val v = pct / 100.0
+                    Chip(
+                        "$pct%",
+                        selected = kotlin.math.abs(share - v) < 0.005,
+                        accent = Amber,
+                        onClick = { vm.run(Command.SetCabin(player.id, v)) },
+                    )
+                }
             }
         }
 

@@ -375,6 +375,15 @@ data class Airline(
     val adBudget: Map<Region, Double> = emptyMap(),
     val alive: Boolean = true,
     val mergedInto: String? = null,
+    /**
+     * 바닥 면적 중 **비즈니스 객실**에 내주는 비율 (0.0 ~ [skytycoon.core.sim.Balance.BIZ_SHARE_MAX]).
+     *
+     * 좌석 수와 단가의 맞바꿈이다. 비즈니스 한 자리가 이코노미
+     * [skytycoon.core.sim.Balance.BIZ_SEAT_SPACE] 석의 바닥을 쓰므로 총 좌석은 줄고,
+     * 대신 앞자리 손님은 훨씬 비싸게 낸다. 출장 수요가 두터운 장거리에서는 남고,
+     * 관광 위주 단거리에서는 줄어든 좌석만큼 손해다.
+     */
+    val bizShare: Double = 0.0,
     val bonusKey: String = "",
     val bonusLabel: String = "",
     /** 안전·신뢰도 0..1. 사고가 나면 떨어지고 서서히 회복된다 */

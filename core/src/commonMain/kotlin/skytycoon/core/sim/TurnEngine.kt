@@ -88,7 +88,7 @@ object TurnEngine {
 
                 val cargo = outcome.revenue * Balance.CARGO_RATE
                 val gross = outcome.revenue + cargo
-                val rc = Economics.routeCost(s, airline, effective, onRoute, outcome.pax, gross)
+                val rc = Economics.routeCost(s, airline, effective, onRoute, outcome.pax, gross, outcome.bizCabinPax, outcome.bizSeatsOffered)
 
                 passengerRevenue += outcome.revenue
                 cargoRevenue += cargo

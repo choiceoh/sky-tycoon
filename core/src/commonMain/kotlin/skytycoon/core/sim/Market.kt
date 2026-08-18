@@ -24,6 +24,10 @@ data class RouteOutcome(
     val fare: Double,
     val localRevenue: Double,
     val share: Double,
+    /** 그중 비즈니스 **객실**에 앉은 승객. 기내식·라운지 원가가 더 붙는다. */
+    val bizCabinPax: Double = 0.0,
+    /** 깔아 놓은 비즈니스 좌석. 비어 있어도 유지비가 나간다. */
+    val bizSeatsOffered: Double = 0.0,
     val connectPax: Double = 0.0,
     val connectRevenue: Double = 0.0,
 ) {
@@ -35,13 +39,25 @@ data class RouteOutcome(
 private class Offer(
     val route: Route,
     val fare: Double,
-    val seats: Double,
+    val bizSeats: Double,
+    val econSeats: Double,
     val bizUtil: Double,
     val leiUtil: Double,
 ) {
+    val seats: Double get() = bizSeats + econSeats
     var remaining: Double = seats
+    /** 이 노선이 실은 출장객 전체 (앞자리·뒷자리 합) */
     var biz: Double = 0.0
     var lei: Double = 0.0
+
+    /**
+     * 앞자리에 앉은 출장객.
+     *
+     * 출장 수요 전체가 앞자리 값을 내지는 않는다 ([Balance.BIZ_CABIN_TAKEUP]) —
+     * 프리미엄 수요보다 객실을 크게 깔면 그만큼 빈 채로 난다.
+     */
+    val bizInCabin: Double get() = minOf(biz * Balance.BIZ_CABIN_TAKEUP, bizSeats)
+    val bizInEcon: Double get() = biz - bizInCabin
 }
 
 object Market {
@@ -131,13 +147,18 @@ object Market {
             val logFreq = ln(1.0 + freq.toDouble())
             val logFare = ln(fareRatio)
 
+            // 앞자리를 깔면 총 좌석이 줄고, 대신 출장객에게 더 매력적이다.
+            val cabin = Economics.cabin(seats, airline.bizShare)
+
             offers += Offer(
                 route = r,
                 fare = fare,
-                seats = seats,
+                bizSeats = cabin.biz,
+                econSeats = cabin.econ,
                 bizUtil = -Balance.BIZ_PRICE_SENS * logFare +
                     Balance.BIZ_SERVICE_W * service +
-                    Balance.BIZ_FREQ_W * logFreq + common,
+                    Balance.BIZ_FREQ_W * logFreq +
+                    Balance.BIZ_CABIN_UTIL_W * airline.bizShare + common,
                 leiUtil = -Balance.LEI_PRICE_SENS * logFare +
                     Balance.LEI_SERVICE_W * service +
                     Balance.LEI_FREQ_W * logFreq + common,
@@ -157,8 +178,13 @@ object Market {
 
         val unmet = DoubleArray(1)
         val fringeUtil = fringeUtility(Geo.pairKey(a.id, b.id), dist)
+        // 출장객이 먼저 고른다 (수익 관리). 앞자리든 뒷자리든 앉을 수 있으므로
+        // 좌석 풀은 객실 전체다.
         allocate(offers, demand.business * induced, unmet, fringeUtil) { it.bizUtil }
             .also { served -> offers.forEachIndexed { i, o -> o.biz = served[i] } }
+        // 레저는 **이코노미만** 쓴다. 출장객이 앞자리를 다 못 채웠어도 그 자리는
+        // 관광객에게 열리지 않는다 — 그게 객실을 나눈다는 뜻이다.
+        for (o in offers) o.remaining = (o.econSeats - o.bizInEcon).coerceAtLeast(0.0)
         allocate(offers, demand.leisure * induced, unmet, fringeUtil) { it.leiUtil }
             .also { served -> offers.forEachIndexed { i, o -> o.lei = served[i] } }
         unmetOut[Geo.pairKey(a.id, b.id)] = unmet[0]
@@ -168,7 +194,9 @@ object Market {
         // 못 실었어도 그렇다.
         val marketTotal = (demand.business + demand.leisure) * induced
         return offers.map { o ->
-            val revenue = o.biz * o.fare * Balance.BIZ_YIELD + o.lei * o.fare * Balance.LEI_YIELD
+            val revenue = o.bizInCabin * o.fare * Balance.BIZ_CABIN_YIELD +
+                o.bizInEcon * o.fare * Balance.BIZ_YIELD +
+                o.lei * o.fare * Balance.LEI_YIELD
             RouteOutcome(
                 routeId = o.route.id,
                 bizPax = o.biz,
@@ -177,6 +205,8 @@ object Market {
                 fare = o.fare,
                 localRevenue = revenue,
                 share = if (marketTotal <= 0) 0.0 else ((o.biz + o.lei) / marketTotal).coerceIn(0.0, 1.0),
+                bizCabinPax = o.bizInCabin,
+                bizSeatsOffered = o.bizSeats,
             )
         }
     }
