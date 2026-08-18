@@ -1,5 +1,6 @@
 package skytycoon.core.sim
 
+import skytycoon.core.data.AircraftCatalog
 import skytycoon.core.model.Airline
 import skytycoon.core.model.Business
 import skytycoon.core.model.BusinessType
@@ -232,9 +233,22 @@ object Stock {
         }
         val disposalProceeds = Economics.businessValue(state, soldOff)
 
+        // 진영 밖 **발주**는 인수사가 이어받을 수 없다 — 인도되는 순간 도입 자체가
+        // 막힌 기재를 손에 쥔다. 선금을 돌려주고 발주를 취소한다.
+        // 이미 뜨고 있는 기재는 그대로 넘어간다: 진영 제약은 **도입**에 걸리는 것이지
+        // 운항에 걸리는 게 아니다. 큰돈을 치른 인수로 상대 기단을 물려받는 것은
+        // 값싸게 사들이는 것과 다른 일이라, 그것까지 막으면 인수의 값어치가 사라진다.
+        val (_, voidedOrders) = state.orders
+            .filter { it.airlineId == targetId }
+            .partition {
+                AircraftCatalog.operableBy(AircraftCatalog[it.typeId], acquirer.home, state.year)
+            }
+        val voidedIds = voidedOrders.map { it.id }.toSet()
+        val orderRefund = voidedOrders.sumOf { AircraftCatalog[it.typeId].price * it.count }
+
         // 인수 대금을 감당 못 하면 그 차액만큼 차입한다. 현금을 마이너스로 두면
         // 다음 분기 결산 전까지 화면에 음수 잔고가 그대로 뜬다.
-        val pooled = acquirer.cash + target.cash + disposalProceeds
+        val pooled = acquirer.cash + target.cash + disposalProceeds + orderRefund
         val financed = (minorityPayout - pooled).coerceAtLeast(0.0)
 
         // 두 회사의 같은 분기 실적을 합친다. 주가의 절반 이상이 최근 4분기 순익에서
@@ -285,6 +299,12 @@ object Stock {
 
         // 잔여 지분 정리에 얼마가 나갔는지는 알려줘야 한다 — 인수 직후 현금이 비면
         // 플레이어는 이유를 모른 채 자금난에 빠진다.
+        val voidNote = if (voidedOrders.isEmpty()) {
+            ""
+        } else {
+            val n = voidedOrders.sumOf { it.count }
+            " 진영이 달라 이어받을 수 없는 발주 ${n}대는 취소하고 ${millions(orderRefund)}을 돌려받았습니다."
+        }
         val settlementNote = when {
             financed > 0 -> " 잔여 지분 정리에 ${millions(minorityPayout)}이 들어 ${millions(financed)}을 차입했습니다."
             minorityPayout > 0 -> " 잔여 지분 정리에 ${millions(minorityPayout)}을 지급했습니다."
@@ -294,13 +314,13 @@ object Stock {
             turn = state.turn,
             kind = NewsKind.MARKET,
             headline = "${acquirer.name}, ${target.name} 인수 완료",
-            body = "${target.name}의 노선망과 기재가 ${acquirer.name}으로 넘어갔습니다.$settlementNote",
+            body = "${target.name}의 노선망과 기재가 ${acquirer.name}으로 넘어갔습니다.$settlementNote$voidNote",
         )
         // 선금까지 치른 발주는 인수사가 이어받는다. 안 넘기면 죽은 회사 앞으로
         // 기재가 인도돼 그대로 증발한다.
-        val orders = state.orders.map {
-            if (it.airlineId == targetId) it.copy(airlineId = acquirerId) else it
-        }
+        val orders = state.orders
+            .filterNot { it.id in voidedIds }
+            .map { if (it.airlineId == targetId) it.copy(airlineId = acquirerId) else it }
         // 착공해 둔 확장 공사의 출자자 지위도 넘겨받는다. 안 넘기면 완공될 때
         // 후원사가 죽은 것으로 보여 우선 배정 슬롯이 시장에 풀리고,
         // 인수사는 인수 대금에 값을 치른 몫을 소리 없이 잃는다.

@@ -224,6 +224,11 @@ object NewGame {
         val available = AircraftCatalog.newFor(year, homeCityId)
             .ifEmpty { AircraftCatalog.newFor(year) }
         if (available.isEmpty()) return wanted
-        return available.minByOrNull { abs(it.seats - wanted.seats) } ?: wanted
+        // 좌석수만 보면 항속거리가 무너진다 — 2012 시나리오에서 소유즈의 Tu-134(84석,
+        // 2,900km)가 좌석이 가장 가까운 ATR 72(74석, **1,500km**)로 바뀌어, 창업
+        // 슬롯이 깔린 목적지 어디에도 못 가는 기재 여섯 대를 들고 시작했다.
+        // 원래 기종만큼은 날 수 있는 후보를 먼저 보고, 없을 때만 좌석수로 물러선다.
+        val farEnough = available.filter { it.range >= wanted.range * 0.8 }
+        return (farEnough.ifEmpty { available }).minByOrNull { abs(it.seats - wanted.seats) } ?: wanted
     }
 }
