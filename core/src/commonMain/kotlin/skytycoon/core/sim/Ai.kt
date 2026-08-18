@@ -451,7 +451,11 @@ object Ai {
             .sumOf { r ->
                 val planes = state.planes.filter { it.routeId == r.id }
                 val cap = Economics.capacity(planes, Geo.distance(a.id, b.id))
-                Economics.quarterlySeats(r.freq.coerceAtMost(cap.maxFreq), cap.avgSeats)
+                val seats = Economics.quarterlySeats(r.freq.coerceAtMost(cap.maxFreq), cap.avgSeats)
+                // 앞자리를 깐 경쟁자는 실제로 내놓는 좌석이 그만큼 적다. 이코노미 기준으로
+                // 세면 그런 시장을 과대평가된 경쟁으로 읽어 멀쩡한 노선을 피한다.
+                val rival = state.airlineOrNull(r.airlineId)
+                if (rival == null) seats else Economics.cabin(seats, rival.bizShare).total
             }
         val airline = state.airline(airlineId)
         val homeBonus = if (a.id == airline.home || b.id == airline.home) 1.35 else 1.0

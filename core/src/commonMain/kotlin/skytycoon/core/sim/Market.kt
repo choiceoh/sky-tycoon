@@ -84,6 +84,24 @@ private class Offer(
 
     /** 나머지 출장객 — 이코노미 좌석에 앉아 [Balance.BIZ_YIELD] 만 낸다. */
     val bizInEcon: Double get() = biz - bizInCabin
+
+    /**
+     * 출장객이 **실제로 앉을 수 있는** 좌석 수.
+     *
+     * 총 좌석을 그대로 쓰면 안 된다. 앞자리를 살 사람은 [takeup] 만큼뿐이라, 출장 수요가
+     * 기재를 가득 채울 만큼 큰 저(低)매력 노선에서는 **앞자리를 비워 둔 채 뒷자리 정원을
+     * 넘겨** 태우게 된다 (`bizInEcon > econSeats`). 태운 인원과 수입이 부풀고, 과대 객실의
+     * 대가도 사라진다 — 환승 쪽에서 잡았던 것과 같은 종류의 구멍이다.
+     *
+     * 출장객이 늘면 뒷자리 사용량은 처음엔 `1 - takeup` 기울기로, 앞자리가 다 찬 뒤로는
+     * 기울기 1 로 는다. 뒷자리 정원과 만나는 지점이 정원이다:
+     * 앞자리가 먼저 차면 `econSeats + bizSeats`, 뒷자리가 먼저 차면 `econSeats / (1 - takeup)`.
+     */
+    val bizCapacity: Double get() {
+        if (bizSeats <= 0.0 || takeup <= 0.0) return econSeats
+        val econFillsFirst = econSeats <= bizSeats * (1.0 - takeup) / takeup
+        return if (econFillsFirst) econSeats / (1.0 - takeup).coerceAtLeast(1e-6) else econSeats + bizSeats
+    }
 }
 
 object Market {
@@ -208,8 +226,9 @@ object Market {
 
         val unmet = DoubleArray(1)
         val fringeUtil = fringeUtility(Geo.pairKey(a.id, b.id), dist)
-        // 출장객이 먼저 고른다 (수익 관리). 앞자리든 뒷자리든 앉을 수 있으므로
-        // 좌석 풀은 객실 전체다.
+        // 출장객이 먼저 고른다 (수익 관리). 앞자리든 뒷자리든 앉을 수 있지만, 앞자리를
+        // 살 사람은 takeup 만큼뿐이라 좌석 풀이 객실 전체는 아니다 ([Offer.bizCapacity]).
+        for (o in offers) o.remaining = o.bizCapacity
         allocate(offers, demand.business * induced, unmet, fringeUtil) { it.bizUtil }
             .also { served -> offers.forEachIndexed { i, o -> o.biz = served[i] } }
         // 레저는 **이코노미만** 쓴다. 출장객이 앞자리를 다 못 채웠어도 그 자리는

@@ -28,7 +28,19 @@ import kotlin.test.assertTrue
  */
 class CabinTest {
 
-    private class R(val seats: Double, val cabinSeats: Double, val cabinPax: Double, val margin: Double)
+    private class R(
+        val seats: Double,
+        val cabinSeats: Double,
+        val cabinPax: Double,
+        val margin: Double,
+        val bizPax: Double = 0.0,
+        val leiPax: Double = 0.0,
+    ) {
+        val econSeats: Double get() = seats - cabinSeats
+
+        /** 뒷자리를 쓴 사람 — 앞자리 값을 못/안 낸 출장객 + 레저 전원. */
+        val inEcon: Double get() = (bizPax - cabinPax) + leiPax
+    }
 
     private fun measure(
         from: String,
@@ -77,7 +89,7 @@ class CabinTest {
             )
         val cost = direct + Economics.depreciation(s.planes) +
             Balance.OVERHEAD_PER_AIRCRAFT + Balance.OVERHEAD_PER_ROUTE + rent
-        return R(o.seats, o.bizSeatsOffered, o.bizCabinPax, (gross - cost) / gross)
+        return R(o.seats, o.bizSeatsOffered, o.bizCabinPax, (gross - cost) / gross, o.bizPax, o.leiPax)
     }
 
     @Test
@@ -274,5 +286,31 @@ class CabinTest {
             },
         )
         return Market.resolvePair(s, Cities[route.from], Cities[route.to], s.routes).first().bizCabinPax
+    }
+
+    /**
+     * 앞자리가 비어 있다고 **뒷자리 정원을 넘겨** 태우면 안 된다.
+     *
+     * 출장 수요만으로 기재가 차는 저빈도 장거리에서, 앞자리를 살 사람은 [Market.premiumTakeup]
+     * 만큼뿐이라 나머지 출장객이 전부 뒷자리로 몰린다. 좌석 풀을 객실 전체로 잡으면 그들이
+     * 이코노미 정원을 넘겨 앉는데, 정작 앞자리는 빈 것으로 보고된다 — 태운 인원과 수입이
+     * 부풀고 과대 객실의 대가가 사라진다. 환승 쪽에서 잡았던 것과 같은 종류의 구멍이다.
+     */
+    @Test
+    fun `앞자리가 비어도 뒷자리 정원을 넘기지 않는다`() {
+        val r = measure("tokyo", "losangeles", "b747_100", Balance.BIZ_SHARE_MAX, 2)
+        println(
+            "[뒷자리 정원] 이코노미 ${r.econSeats.toInt()}석에 ${r.inEcon.toInt()}명 · " +
+                "앞자리 ${r.cabinSeats.toInt()}석 중 ${r.cabinPax.toInt()}명",
+        )
+        assertTrue(
+            r.cabinSeats - r.cabinPax > 1.0,
+            "앞자리가 다 차 버려 이 테스트가 아무것도 못 잡는다",
+        )
+        assertTrue(
+            r.inEcon <= r.econSeats + 1.0,
+            "앞자리 ${(r.cabinSeats - r.cabinPax).toInt()}석이 빈 채로 뒷자리 정원을 넘겼다 " +
+                "(${r.inEcon.toInt()} > ${r.econSeats.toInt()})",
+        )
     }
 }
