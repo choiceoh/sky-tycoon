@@ -222,7 +222,7 @@ object Balance {
      * 매 분기 나가는 고정비로 바꾸면 **안 쓰는 슬롯이 곧 손실**이라 정리 압박이 생기고,
      * 수요가 꺾이는 분기에는 실제로 적자가 난다 (영업 레버리지).
      */
-    const val SLOT_RENT_PER_QUARTER = 0.055e6
+    const val SLOT_RENT_PER_QUARTER = 0.012e6
 
     // --- 공항 확장 공사 ---
     /**

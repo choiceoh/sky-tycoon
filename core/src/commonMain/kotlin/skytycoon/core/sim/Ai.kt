@@ -300,6 +300,10 @@ object Ai {
     private fun shedIdleSlots(state: GameState, airlineId: String): GameState {
         var s = state
         val home = s.airline(airlineId).home
+        // 기재를 발주해 둔 동안에는 슬롯을 놓지 않는다. 인도까지 두 분기가 걸리는데
+        // 그사이에 반납해 버리면, 비행기가 도착했을 때 띄울 자리가 없다 — 확장에
+        // 큰돈을 쓰고 기재까지 발주해 놓고 정작 둘을 못 만나게 하는 셈이다.
+        if (s.orders.any { it.airlineId == airlineId }) return s
         for (city in s.airline(airlineId).slots.keys.toList()) {
             val idle = s.freeSlots(airlineId, city)
             val keep = if (city == home) 6 else 2

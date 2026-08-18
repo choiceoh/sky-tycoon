@@ -89,9 +89,16 @@ class BalanceTest {
         val ownership = Economics.depreciation(planes)
         val overheadShare = planes.size * Balance.OVERHEAD_PER_AIRCRAFT * state.world.inflation +
             Balance.OVERHEAD_PER_ROUTE * state.world.inflation
+        // 결산(TurnEngine.settle)이 노선에 물리는 것과 **같은** 슬롯 임차료를 여기서도
+        // 물린다. 안 그러면 가드레일이 실제보다 후한 마진을 보고 통과시켜, 게임에서는
+        // 적자인 노선을 "남는다"고 승인한다.
+        val slotRent = route.freq * (
+            Economics.slotRent(state, airline.id, route.from) +
+                Economics.slotRent(state, airline.id, route.to)
+            )
         return Economy(
             revenue = gross,
-            cost = direct + ownership + overheadShare,
+            cost = direct + ownership + overheadShare + slotRent,
             pax = outcome.pax,
             lf = outcome.seats.let { if (it <= 0) 0.0 else outcome.pax / it },
         )
