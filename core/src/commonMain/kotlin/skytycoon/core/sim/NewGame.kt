@@ -9,6 +9,7 @@ import skytycoon.core.model.Airline
 import skytycoon.core.model.AircraftType
 import skytycoon.core.model.CityState
 import skytycoon.core.model.GameState
+import skytycoon.core.save.Save
 import skytycoon.core.model.NewsItem
 import skytycoon.core.model.NewsKind
 import skytycoon.core.model.Plane
@@ -119,6 +120,10 @@ object NewGame {
         }
 
         var state = GameState(
+            // 새로 만든 판은 이미 지금 형식이다. 기본값 0 은 "버전을 새기기 전 세이브"
+            // 라는 뜻이라, 그대로 두면 저장·복원 왕복에서 값이 달라지고 마이그레이션이
+            // 새 판에 한 번 더 걸린다.
+            formatVersion = Save.FORMAT_VERSION,
             seed = seed,
             rngState = rng.state,
             scenarioId = scenarioId,

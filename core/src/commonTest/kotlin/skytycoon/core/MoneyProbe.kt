@@ -1,5 +1,6 @@
 package skytycoon.core
 
+import skytycoon.core.data.AircraftCatalog
 import skytycoon.core.sim.Ai
 import skytycoon.core.sim.Balance
 import skytycoon.core.sim.Economics
@@ -71,6 +72,15 @@ class MoneyProbe {
                     "현금/자본 ${pct(cashRatioSum / samples.coerceAtLeast(1))}",
             )
         }
+        println("── 기체 급별 가격 배수 (Balance.PLANE_PRICE_SLOPE)")
+        for (id in listOf("dc9", "b737_200", "b727", "b707", "a300", "b747_100", "b747_400", "b777", "a380")) {
+            val t = AircraftCatalog[id]
+            val mul = AircraftCatalog.priceMultiplier(t)
+            println(
+                "   ${t.name}: ×${(mul * 100).toInt() / 100.0} " +
+                    "→ ${(t.price / 1e6).toInt()}M (${t.seats}석 ${t.range}km)",
+            )
+        }
         println(
             "목표: 순이익률 10~18% · 기재 회수 4~6년 · 적자 분기 5% 이상 " +
                 "(호황엔 남고 불황엔 물리는 폭)",
@@ -79,7 +89,8 @@ class MoneyProbe {
         // **단거리부터 죽는다**는 벽을 먼저 넘어야 한다 — BalanceTest 의 런던–파리는
         // 최선 편수에서도 마진이 10% 언저리라, 고정비를 올리는 손잡이(기재당 간접비,
         // 운항 원가 배수)는 어느 것이든 그 거리대를 통째로 적자로 만든다.
-        // 측정해 본 것: 기재당 간접비 55만(-5%), 운항 원가 ×1.5(-35%), 기재값 ×2.6(-41%).
+        // 측정해 본 것: 기재당 간접비 26만(7%)·55만(-5%), 운항 원가 ×1.5(-35%),
+        // 기재값 일률 ×2(1%). 기체 급별 배수는 소형기를 건드리지 않아 여기서 자유롭다.
         // 적자 분기를 만들려면 고정비가 필요한데 고정비가 단거리를 죽이므로,
         // 순서는 "단거리 여유 넓히기 → 고정비 올리기" 여야 한다.
 

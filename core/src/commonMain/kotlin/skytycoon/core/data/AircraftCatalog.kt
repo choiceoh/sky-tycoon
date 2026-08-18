@@ -3,6 +3,7 @@ package skytycoon.core.data
 import skytycoon.core.model.AircraftType
 import skytycoon.core.sim.Balance
 import kotlin.math.pow
+import kotlin.math.sqrt
 
 object AircraftCatalog {
     val all: List<AircraftType> = listOf(
@@ -82,7 +83,7 @@ object AircraftCatalog {
         AircraftType("f100", "포커 100", "포커", 1988, 2000, 109, 3200, 780.0, 32e6, 2.8, 460.0, 420.0, 0.55, 2.0),
         // 유일한 터보프롭. 느린 대신 기름을 거의 안 먹어, 짧고 얇은 구간에서만 값어치가 있다.
         AircraftType("atr72", "ATR 72-500", "ATR", 1989, 2040, 74, 1500, 510.0, 22e6, 1.3, 300.0, 300.0, 0.45, 1.0),
-    ).map { it.copy(price = it.price * Balance.AIRCRAFT_PRICE_MUL) }
+    ).map { it.copy(price = it.price * priceMultiplier(it)) }
 
     private val byId = all.associateBy { it.id }
 
@@ -144,6 +145,19 @@ object AircraftCatalog {
      * (분기마다 3.5%를 깎으면 15년 만에 하한까지 떨어져 기업가치·중고 시세가 통째로 무너진다)
      * 15년 ≈ 34%, 25년 ≈ 16%, 하한 12%.
      */
+    /**
+     * 기체 급에 따른 가격 배수 (Balance 의 기재값 주석 참고).
+     *
+     * 좌석과 항속거리를 함께 본다 — "큰 기체를 멀리 보내는 능력"이 값의 핵심이다.
+     * 소형 단거리기는 1.0 에 머무르고, 광동체 장거리기는 두 배 넘게 붙는다. 일률로
+     * 올리면 대당 매출이 작은 단거리 노선이 먼저 죽는다.
+     */
+    fun priceMultiplier(t: AircraftType): Double {
+        val scale = (t.seats / Balance.PLANE_SCALE_SEATS) * (t.range / Balance.PLANE_SCALE_RANGE)
+        val over = (sqrt(scale) - Balance.PLANE_PRICE_FLOOR).coerceAtLeast(0.0)
+        return 1.0 + Balance.PLANE_PRICE_SLOPE * over
+    }
+
     fun residualRatio(ageQuarters: Int): Double =
         (0.93.pow(ageQuarters / 4.0)).coerceAtLeast(0.12)
 }

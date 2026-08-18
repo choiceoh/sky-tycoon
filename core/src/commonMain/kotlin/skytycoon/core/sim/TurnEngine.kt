@@ -196,7 +196,14 @@ object TurnEngine {
         val news = mutableListOf<NewsItem>()
         for (o in due) {
             repeat(o.count) {
-                newPlanes += Plane(id = nextId++, typeId = o.typeId, airlineId = o.airlineId, ageQuarters = 0)
+                newPlanes += Plane(
+                    id = nextId++,
+                    typeId = o.typeId,
+                    airlineId = o.airlineId,
+                    ageQuarters = 0,
+                    // 발주할 때 치른 값이 장부 기준이다 (그 뒤 카탈로그가 바뀌어도).
+                    valueMul = o.valueMul,
+                )
             }
             val airline = state.airlineOrNull(o.airlineId)
             if (airline?.isPlayer == true) {

@@ -221,6 +221,12 @@ data class Order(
     val typeId: String,
     val count: Int,
     val deliverTurn: Int,
+    /**
+     * 인도될 기재의 장부가 배율 — 발주 시점에 **치른 값**을 기준으로 새긴다
+     * ([Plane.valueMul] 참고). 카탈로그 가격이 바뀌어도 이미 값을 치른 발주가
+     * 새 가격으로 장부에 잡히지 않는다.
+     */
+    val valueMul: Double = 1.0,
 )
 
 @Serializable
@@ -426,6 +432,11 @@ data class Outcome(val won: Boolean, val rank: Int, val reason: String)
 
 @Serializable
 data class GameState(
+    /**
+     * 세이브 형식 버전. 0 은 버전을 새기기 전의 세이브라는 뜻이다
+     * ([skytycoon.core.save.Save.migrate] 가 그걸 보고 옛 규칙을 손본다).
+     */
+    val formatVersion: Int = 0,
     val seed: Int,
     val rngState: Int,
     val scenarioId: String,

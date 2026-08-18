@@ -280,7 +280,7 @@ object Balance {
     const val NAV_PER_KM = 0.030
     const val PAX_SERVICE_BASE = 5.5
     const val PAX_SERVICE_PER_LEVEL = 2.2
-    const val DISTRIBUTION_RATE = 0.18
+    const val DISTRIBUTION_RATE = 0.24
     /**
      * 기재 한 대를 굴리는 데 드는 본사·지상 조직 비용 (분기).
      *
@@ -294,15 +294,26 @@ object Balance {
     const val OVERHEAD_FIXED = 1.6e6
     const val DEPRECIATION_QUARTERS = 60.0
 
-    /**
-     * 기재 카탈로그 가격에 곱하는 배수.
-     *
-     * 카탈로그 값은 실제 시대별 명목가지만, 이 게임의 압축된 수요 규모에 견주면
-     * 너무 쌌다 — 한 대가 제 값을 **1.8~2.9년** 만에 뽑았다. 기재가 그 정도로 싸면
-     * 기단 구성이 판단거리가 아니라 현금이 모이는 대로 누르는 버튼이 된다.
-     * 회수 기간을 4~6년으로 늘려 발주 하나가 무게를 갖게 한다 (MoneyProbe 참고).
-     */
-    const val AIRCRAFT_PRICE_MUL = 2.0
+    // --- 기재값 ---
+    // 카탈로그 값은 실제 시대별 명목가지만, 이 게임의 압축된 수요 규모에 견주면 너무 쌌다 —
+    // 한 대가 제 값을 **1.8~2.9년** 만에 뽑았다. 그 정도면 기단 구성이 판단거리가 아니라
+    // 현금이 모이는 대로 누르는 버튼이다.
+    //
+    // 다만 **일률로 올리면 단거리가 먼저 죽는다**. 짧은 노선은 대당 매출이 작아 자본비용을
+    // 감당할 여유가 거의 없다 (일률 ×2 만으로 런던–파리 마진이 1% 로 주저앉았다).
+    // 그래서 배수를 기체 급에 걸었다 — 작은 단거리기는 거의 그대로 두고, 큰 기체를 멀리
+    // 보내는 능력에 값을 매긴다. 광동체 발주가 회사를 거는 결정이 되고, 단거리 셔틀은
+    // 여전히 손이 닿는 값에 남는다.
+
+    /** 좌석·항속거리의 기준점 (B737-200 급이 1.0 이 되도록). */
+    const val PLANE_SCALE_SEATS = 150.0
+    const val PLANE_SCALE_RANGE = 4_000.0
+
+    /** 이 규모(√) 아래로는 값을 올리지 않는다 — 소형 단거리기의 자리. */
+    const val PLANE_PRICE_FLOOR = 0.70
+
+    /** 규모 한 단위가 값에 얹히는 정도. */
+    const val PLANE_PRICE_SLOPE = 0.75
     const val CARGO_RATE = 0.13
     const val TAX_RATE = 0.40
     /** 기령 1분기마다 정비비가 이만큼씩 붙는다 */
