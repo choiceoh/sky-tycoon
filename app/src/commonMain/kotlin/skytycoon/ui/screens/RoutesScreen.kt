@@ -177,9 +177,13 @@ private fun RouteDetail(vm: GameViewModel, route: Route) {
                 KeyValue("수송객", people(r.pax))
                 KeyValue("공급 좌석", people(r.seats))
                 KeyValue("탑승률", percent(r.loadFactor), loadFactorColor(r.loadFactor))
-                KeyValue("구간 점유율", percent(r.share))
+                // 점유율은 **이 구간이 목적지인 로컬 승객**만의 몫이다. 바로 위 수송객에는
+                // 이 노선을 중간 구간으로 쓴 환승객이 섞여 있어, 그냥 "점유율"이라고 하면
+                // 환승으로 꽉 찬 노선이 점유율만 낮게 보여 읽는 사람이 헷갈린다.
+                KeyValue("로컬 점유율", percent(r.share))
                 KeyValue("매출", moneyShort(r.revenue))
-                KeyValue("운항 원가", moneyShort(r.cost))
+                // 원가에는 이 노선이 물고 있는 슬롯의 분기 임차료가 들어 있다.
+                KeyValue("원가 (임차료 포함)", moneyShort(r.cost))
                 KeyValue("손익", signedMoney(r.profit), profitColor(r.profit))
             }
         }

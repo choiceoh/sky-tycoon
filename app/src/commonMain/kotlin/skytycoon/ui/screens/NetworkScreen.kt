@@ -47,6 +47,7 @@ import skytycoon.core.sim.Command
 import skytycoon.core.sim.Demand
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Geo
+import skytycoon.core.sim.Market
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
 import skytycoon.ui.Ink
@@ -166,7 +167,13 @@ private fun CityPanel(vm: GameViewModel, city: City, onCompose: (String) -> Unit
             KeyValue("내 보유", "${mine}개 (사용 ${used} · 여유 ${mine - used})")
             KeyValue("공항 전체", "${city.slots + (s.cityState[city.id]?.extraSlots ?: 0)}개")
             KeyValue("미분양", "${unsold}개", if (unsold > 0) Mint else Coral)
-            KeyValue("매입 단가", moneyShort(price), Amber)
+            KeyValue("취득 수수료", moneyShort(price), Amber)
+            // 슬롯은 사는 게 아니라 빌리는 것이다 — 매 분기 나가는 값을 같이 보여줘야
+            // "일단 확보해 두자"가 공짜가 아니라는 게 읽힌다.
+            KeyValue("분기 임차료", "${moneyShort(Economics.slotRent(s, player.id, city.id))} / 슬롯", Coral)
+            if (mine > 0) {
+                KeyValue("내 슬롯 유지비", "${moneyShort(Economics.slotRent(s, player.id, city.id) * mine)} / 분기")
+            }
             VSpace(8)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (n in listOf(1, 3, 5)) {
@@ -178,6 +185,26 @@ private fun CityPanel(vm: GameViewModel, city: City, onCompose: (String) -> Unit
                         Text("+$n", fontSize = 12.sp)
                     }
                 }
+            }
+            val idle = mine - used
+            if (idle > 0) {
+                VSpace(8)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (n in listOf(1, 3, 5)) {
+                        OutlinedButton(
+                            onClick = { vm.run(Command.ReleaseSlots(player.id, city.id, n)) },
+                            enabled = idle >= n,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("반납 -$n", fontSize = 12.sp, color = Coral)
+                        }
+                    }
+                }
+                Text(
+                    "놀리는 슬롯 ${idle}개도 임차료는 그대로 나갑니다. 취득 수수료는 돌려받지 못합니다.",
+                    color = TextLow,
+                    fontSize = 11.sp,
+                )
             }
             if (unsold == 0) {
                 VSpace(6)
@@ -266,7 +293,7 @@ private fun CityPanel(vm: GameViewModel, city: City, onCompose: (String) -> Unit
                                 existing -> " · 우리 노선"
                                 rivals > 0 -> " · 경쟁 ${rivals}사"
                                 else -> " · 미개척"
-                            },
+                            } + " · 로컬 ${Market.localStrengthLabel(city, dest)}",
                             color = if (!existing && rivals == 0) Mint else TextMid,
                             fontSize = 11.sp,
                         )
@@ -387,6 +414,9 @@ private fun RouteComposer(vm: GameViewModel, from: String, to: String, onDismiss
                             "구간 연 수요",
                             people(Demand.annualEstimate(s, Cities[from], Cities[to])),
                         )
+                        // 로컬 항공사가 센 구간은 같은 수요라도 덜 찬다. 슬롯값을 치르기
+                        // 전에 보여 줘야 "시장을 고른다"가 판단이 된다.
+                        KeyValue("로컬 경쟁", Market.localStrengthLabel(Cities[from], Cities[to]))
                         KeyValue("개설 비용", moneyShort(setupCost), Amber)
                     }
                 }

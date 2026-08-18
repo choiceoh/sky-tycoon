@@ -48,10 +48,15 @@ class GeoAndDemandTest {
     fun `주요 노선 수요가 게임 스케일 안에 있다`() {
         // 간선 노선 하나가 여객기 두세 대(분기 5만 석 안팎)를 먹여 살리는 규모여야
         // 운임·편수 경쟁이 의미를 갖는다. Balance.DEMAND_K 주석 참고.
+        //
+        // 범위는 그 문장에서 되짚어 잡았다. 727 두 대를 서울–도쿄(1,150km)에 넣으면
+        // 분기 약 5만 4천 석이므로, 간선의 분기 수요가 그 안팎(≒ 연 20만)이어야
+        // 비로소 "두세 대짜리 노선"이다. 예전 범위(연 35만~80만)는 3~7대에 해당해
+        // 수요가 공급을 압도했고, 그래서 좌석이 언제나 다 팔려 운임 경쟁이 죽어 있었다.
         val checks = listOf(
-            Triple("seoul", "tokyo", 350_000.0..800_000.0),
-            Triple("newyork", "london", 180_000.0..600_000.0),
-            Triple("newyork", "losangeles", 250_000.0..700_000.0),
+            Triple("seoul", "tokyo", 150_000.0..320_000.0),
+            Triple("newyork", "london", 80_000.0..220_000.0),
+            Triple("newyork", "losangeles", 100_000.0..260_000.0),
         )
         for ((a, b, range) in checks) {
             val d = Demand.annualBase(Cities[a], Cities[b]).total
@@ -65,12 +70,15 @@ class GeoAndDemandTest {
     }
 
     @Test
-    fun `장거리 노선일수록 레저 비중이 높다`() {
+    fun `장거리 노선일수록 출장 비중이 높다`() {
+        // 예전에는 반대로 잡혀 있었다 — 장거리가 레저 위주라, 수익계수가 낮은 손님만
+        // 태우고 대형기 장거리 노선의 마진이 12% 까지 눌렸다. 값과 시간을 감당하는 쪽은
+        // 출장 수요라고 보는 편이 채산에도 맞다 (BIZ_YIELD 1.90 vs LEI_YIELD 0.95).
         val short = Demand.annualBase(Cities["seoul"], Cities["tokyo"])
         val long = Demand.annualBase(Cities["seoul"], Cities["sydney"])
         assertTrue(
-            long.businessShare < short.businessShare,
-            "장거리에서 출장 비중이 더 낮아야 한다 (단거리 ${short.businessShare}, 장거리 ${long.businessShare})",
+            long.businessShare > short.businessShare,
+            "장거리에서 출장 비중이 더 높아야 한다 (단거리 ${short.businessShare}, 장거리 ${long.businessShare})",
         )
     }
 }

@@ -12,6 +12,7 @@ import skytycoon.core.model.Plane
 import skytycoon.core.model.Region
 import skytycoon.core.model.Route
 import skytycoon.core.model.Trait
+import kotlin.math.exp
 
 /**
  * 경쟁사 두뇌. 플레이어와 똑같이 [Actions] 를 통해서만 세계를 바꾸므로
@@ -50,6 +51,10 @@ object Ai {
         s = finance(s, airlineId)
         s = marketing(s, airlineId, skill)
         s = sideBusiness(s, airlineId, rng)
+        // 노선을 다 벌인 **뒤에** 남는 슬롯을 정리한다. 앞에 두면 확장으로 막 받은
+        // 우선 배정분을 openRoutes 가 써 보기도 전에 반납해 버린다 — 큰돈과 6분기를
+        // 들여 얻은 것을 그 자리에서 버리는 셈이다.
+        s = shedIdleSlots(s, airlineId)
         s = stockMoves(s, airlineId, rng, skill)
         return s
     }
@@ -89,11 +94,23 @@ object Ai {
         return s
     }
 
-    /** 돈이 안 되고 손님도 없는 노선은 접는다. */
+    /**
+     * 돈이 안 되고 손님도 없는 노선은 접는다.
+     *
+     * [RouteResult.cost] 에는 그 노선이 물고 있는 슬롯의 임차료가 이미 들어 있다
+     * (TurnEngine.settle 참고). 그래서 여기서 따로 더할 것 없이 [RouteResult.profit]
+     * 만 보면 **슬롯값까지 갚고 남는가**를 판단하는 셈이 된다.
+     */
     private fun pruneRoutes(state: GameState, airlineId: String, rng: Rng): GameState {
         var s = state
         for (route in s.routesOf(airlineId)) {
             val last = route.last ?: continue
+            // 공항 폐쇄로 아예 못 뜬 분기는 판단 근거가 못 된다. 지금은 결산이 그런
+            // 분기에 빈 결과(원가 0)를 남겨서 아래 부등식이 어차피 안 걸리지만, 임차료를
+            // 노선에 물리는 방식이 바뀌면 곧바로 "화산 한 번에 멀쩡한 간선을 영구히
+            // 접는" 버그가 된다 — 실제로 그렇게 만들었다가 되돌렸다. 명시해 둔다.
+            // 좌석이 0 이면 "띄웠는데 텅 빈" 것이 아니라 아예 못 뜬 것이다.
+            if (last.seats <= 0.0) continue
             val hopeless = last.profit < 0 && last.loadFactor < 0.48
             if (hopeless && rng.chance(0.45)) {
                 s = cmd(s, Command.CloseRoute(airlineId, route.id))
@@ -117,7 +134,7 @@ object Ai {
                 val city = Cities[cityId]
                 val extra = state.cityState[cityId]?.extraSlots ?: 0
                 // 완전히 마르기를 기다릴 필요는 없다 — 바닥이 보이면 이미 병목이다.
-                val dry = state.unsoldSlots(city) <= (city.slots + extra) * 0.05
+                val dry = state.unsoldSlots(city) <= state.totalSlots(city.id) * 0.05
                 dry && !Actions.expansionInProgress(state, cityId)
             }
         if (candidates.isEmpty()) return state
@@ -275,6 +292,33 @@ object Ai {
     // ------------------------------------------------------------- 슬롯
 
     /** 허브에 슬롯 여유가 없으면 확장이 막히므로 미리 사둔다. */
+    /**
+     * 오래 놀리는 슬롯을 반납한다. 슬롯이 분기 임차료를 무는 고정비가 된 뒤로는
+     * 쌓아 두는 것만으로 손실이라, 이 정리가 없으면 AI 가 제 살을 깎으며 버틴다.
+     * 홈 공항은 성장 여지로 조금 남겨 둔다.
+     */
+    private fun shedIdleSlots(state: GameState, airlineId: String): GameState {
+        var s = state
+        val home = s.airline(airlineId).home
+        // 기재를 발주해 둔 동안에는 슬롯을 놓지 않는다. 인도까지 두 분기가 걸리는데
+        // 그사이에 반납해 버리면, 비행기가 도착했을 때 띄울 자리가 없다 — 확장에
+        // 큰돈을 쓰고 기재까지 발주해 놓고 정작 둘을 못 만나게 하는 셈이다.
+        if (s.orders.any { it.airlineId == airlineId }) return s
+        for (city in s.airline(airlineId).slots.keys.toList()) {
+            val idle = s.freeSlots(airlineId, city)
+            val keep = if (city == home) 6 else 2
+            // 남는 몫을 한 번에 다 반납하지 않고 **절반씩** 흘려보낸다.
+            // openRoutes 는 한 턴에 새 노선을 3개까지만 여니, 확장으로 받은 30 슬롯을
+            // 그 턴에 다 쓸 수 없다. 즉시 정리하면 큰돈과 6분기를 들여 얻은 우선
+            // 배정분을 다음 턴이 써 보기도 전에 버린다. 절반씩이면 정말 노는 슬롯은
+            // 몇 턴 안에 정리되면서도, 막 받은 슬롯에는 쓸 시간이 생긴다.
+            val excess = idle - keep
+            val drop = (excess + 1) / 2
+            if (excess > 0 && drop > 0) s = cmd(s, Command.ReleaseSlots(airlineId, city, drop))
+        }
+        return s
+    }
+
     private fun manageSlots(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {
         var s = state
         val home = s.airline(airlineId).home
@@ -410,7 +454,11 @@ object Ai {
         val airline = state.airline(airlineId)
         val homeBonus = if (a.id == airline.home || b.id == airline.home) 1.35 else 1.0
         val brandBonus = 1.0 + (airline.brandIn(a.region) + airline.brandIn(b.region)) / 400.0
-        return demand / (1.0 + rivalSeats / 1000.0) * homeBonus * brandBonus
+        // 모델에 있는 경쟁자만 세면 절반만 보는 것이다. 로컬 항공사는 어느 구간에나
+        // 있고 세기가 구간마다 다르므로, 로컬이 억센 시장은 그만큼 깎아 본다 —
+        // 이게 없으면 AI 는 편차를 못 읽고 하필 빡센 시장만 골라 들어간다.
+        val local = exp(Market.localStrength(a, b))
+        return demand / (1.0 + rivalSeats / 1000.0) / (1.0 + local) * homeBonus * brandBonus
     }
 
     // ------------------------------------------------------------- 재무·마케팅·부대사업

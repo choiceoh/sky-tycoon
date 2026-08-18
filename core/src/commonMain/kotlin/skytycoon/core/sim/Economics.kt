@@ -185,7 +185,7 @@ object Economics {
     fun slotPrice(state: GameState, airlineId: String, cityId: String): Double {
         val city = Cities[cityId]
         val extra = state.cityState[cityId]?.extraSlots ?: 0
-        val total = (city.slots + extra).toDouble()
+        val total = state.totalSlots(cityId).toDouble()
         val free = state.unsoldSlots(city).toDouble()
         val scarcity = ((total - free + 1.0) / total).coerceIn(0.0, 1.0)
         val airline = state.airlineOrNull(airlineId)
@@ -209,11 +209,34 @@ object Economics {
     fun businessValue(state: GameState, businesses: List<Business>): Double =
         businesses.sumOf { it.type.cost * 0.7 } * state.world.inflation
 
-    /** 자기자본 = 현금 + 기재가치 + 슬롯가치 + 부대사업 − 부채. */
+    /**
+     * 슬롯 1개의 분기 임차료. 큰 공항일수록, 착륙료가 비싼 공항일수록 비싸다.
+     * 홈 공항은 연고 덕에 싸게 쓴다 (취득 수수료와 같은 할인).
+     */
+    fun slotRent(state: GameState, airlineId: String, cityId: String): Double {
+        val city = Cities[cityId]
+        val sizeFactor = (city.econ + city.tour) / 100.0
+        val home = if (state.airlineOrNull(airlineId)?.home == cityId) Balance.SLOT_HOME_DISCOUNT else 1.0
+        // 난이도 배수를 여기서 곱한다. 결산에서만 곱하면 화면에 뜨는 임차료와 실제
+        // 청구액이 달라져, 플레이어가 잘못된 값으로 슬롯을 잡거나 반납한다.
+        return Balance.SLOT_RENT_PER_QUARTER * sizeFactor * city.fee * home *
+            state.world.inflation * Difficulties[state.difficultyId].costMul
+    }
+
+    /**
+     * 이 항공사가 이번 분기에 낼 슬롯 임차료 총액 — **쓰든 안 쓰든 보유한 만큼** 나간다.
+     * 놀리는 슬롯이 곧 손실이라 노선망을 방치할 수 없게 만드는 항목이다.
+     */
+    fun slotRentTotal(state: GameState, airline: Airline): Double =
+        airline.slots.entries.sumOf { (city, n) -> n * slotRent(state, airline.id, city) }
+
+    /** 자기자본 = 현금 + 기재가치 + 슬롯권리금 + 부대사업 − 부채. */
     fun equity(state: GameState, airline: Airline): Double {
         val fleet = fleetValue(state.planesOf(airline.id))
+        // 슬롯은 이제 **임차**라 자산이 아니다. 취득 수수료만큼의 권리금 정도로만 잡는다 —
+        // 예전 기준(매입가의 60%)을 그대로 두면 임차료를 내면서 자산도 불어나 이중 계상이 된다.
         val slots = airline.slots.entries.sumOf { (city, n) ->
-            n * Balance.SLOT_BASE_PRICE * ((Cities[city].econ + Cities[city].tour) / 100.0) * state.world.inflation * 0.6
+            n * Balance.SLOT_BASE_PRICE * ((Cities[city].econ + Cities[city].tour) / 100.0) * state.world.inflation * 0.5
         }
         val biz = businessValue(state, airline.businesses)
         val stocks = airline.holdings.entries.sumOf { (id, shares) ->
