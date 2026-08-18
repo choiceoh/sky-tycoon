@@ -2,6 +2,7 @@ package skytycoon.core.sim
 
 import skytycoon.core.data.AircraftCatalog
 import skytycoon.core.data.Cities
+import skytycoon.core.model.Airline
 import skytycoon.core.model.City
 import skytycoon.core.model.GameState
 import skytycoon.core.model.Route
@@ -24,24 +25,83 @@ data class RouteOutcome(
     val fare: Double,
     val localRevenue: Double,
     val share: Double,
+    /**
+     * 그중 **비즈니스 운임을 낸** 승객 (분기 인원).
+     *
+     * "앞자리에 앉을 수 있었던 사람"이 아니라 실제로 프리미엄 값을 치른 쪽이다 —
+     * 출장 수요 중 [Balance.BIZ_CABIN_TAKEUP] 만큼만 그렇고, 객실 좌석 수로 한 번 더
+     * 잘린다. 기내식·라운지 원가가 이 인원에 붙는다.
+     */
+    val bizCabinPax: Double = 0.0,
+    /**
+     * 깔아 놓은 비즈니스 좌석 — **분기 공급 좌석**(편도 편수 × 좌석)이지 기체의 물리
+     * 좌석 수가 아니다. 비어 있어도 유지비가 나간다.
+     */
+    val bizSeatsOffered: Double = 0.0,
     val connectPax: Double = 0.0,
     val connectRevenue: Double = 0.0,
 ) {
     val localPax: Double get() = bizPax + leiPax
     val pax: Double get() = localPax + connectPax
     val revenue: Double get() = localRevenue + connectRevenue
+
+    /**
+     * 환승 승객이 쓸 수 있는 **이코노미** 빈자리.
+     *
+     * 총 빈자리를 쓰면 안 된다 — 그러면 앞자리에 앉지 못하게 막아 둔 비프리미엄 수요가
+     * 환승으로 우회해 그 자리를 채운다. 객실을 크게 깔아도 빈자리가 환승으로 메워지니
+     * **과대 객실의 대가가 사라지고**, 게다가 그 손님은 환승 운임만 내면서 앞자리
+     * 승객으로도 안 잡힌다.
+     */
+    val econSpare: Double get() =
+        ((seats - bizSeatsOffered) - (localPax - bizCabinPax)).coerceAtLeast(0.0)
 }
 
 private class Offer(
     val route: Route,
     val fare: Double,
-    val seats: Double,
+    /** 분기 공급 좌석 기준 (물리 좌석 수가 아니다). */
+    val bizSeats: Double,
+    val econSeats: Double,
     val bizUtil: Double,
     val leiUtil: Double,
+    /** 이 회사가 이 노선에서 출장객 중 몇 %에게 앞자리 값을 받아내는가. */
+    val takeup: Double,
 ) {
+    val seats: Double get() = bizSeats + econSeats
     var remaining: Double = seats
+    /** 이 노선이 실은 출장객 전체 (앞자리·뒷자리 합) */
     var biz: Double = 0.0
     var lei: Double = 0.0
+
+    /**
+     * **비즈니스 운임을 낸** 출장객.
+     *
+     * 출장 수요 전체가 앞자리 값을 내지는 않고([Balance.BIZ_CABIN_TAKEUP]), 그 비율은
+     * 회사마다 다르다([takeup]) — 프리미엄 수요보다 객실을 크게 깔면 그만큼 빈 채로 난다.
+     */
+    val bizInCabin: Double get() = minOf(biz * takeup, bizSeats)
+
+    /** 나머지 출장객 — 이코노미 좌석에 앉아 [Balance.BIZ_YIELD] 만 낸다. */
+    val bizInEcon: Double get() = biz - bizInCabin
+
+    /**
+     * 출장객이 **실제로 앉을 수 있는** 좌석 수.
+     *
+     * 총 좌석을 그대로 쓰면 안 된다. 앞자리를 살 사람은 [takeup] 만큼뿐이라, 출장 수요가
+     * 기재를 가득 채울 만큼 큰 저(低)매력 노선에서는 **앞자리를 비워 둔 채 뒷자리 정원을
+     * 넘겨** 태우게 된다 (`bizInEcon > econSeats`). 태운 인원과 수입이 부풀고, 과대 객실의
+     * 대가도 사라진다 — 환승 쪽에서 잡았던 것과 같은 종류의 구멍이다.
+     *
+     * 출장객이 늘면 뒷자리 사용량은 처음엔 `1 - takeup` 기울기로, 앞자리가 다 찬 뒤로는
+     * 기울기 1 로 는다. 뒷자리 정원과 만나는 지점이 정원이다:
+     * 앞자리가 먼저 차면 `econSeats + bizSeats`, 뒷자리가 먼저 차면 `econSeats / (1 - takeup)`.
+     */
+    val bizCapacity: Double get() {
+        if (bizSeats <= 0.0 || takeup <= 0.0) return econSeats
+        val econFillsFirst = econSeats <= bizSeats * (1.0 - takeup) / takeup
+        return if (econFillsFirst) econSeats / (1.0 - takeup).coerceAtLeast(1e-6) else econSeats + bizSeats
+    }
 }
 
 object Market {
@@ -99,9 +159,8 @@ object Market {
                     airline.slotsAt(b.id).toDouble() / capacityB
                 ) / 2.0
             val prestige = planes.sumOf { AircraftCatalog[it.typeId].prestige } / planes.size
-            val bizFacilities = airline.businesses
-                .filter { it.city == a.id || it.city == b.id }
-                .sumOf { it.type.demandBoost }
+            val endpointBusinesses = airline.businesses.filter { it.city == a.id || it.city == b.id }
+            val bizFacilities = endpointBusinesses.sumOf { it.type.demandBoost }
 
             // 양 끝에서 이 회사가 **다른 어디로 더 갈 수 있는가**. 연결편이 많은 회사가
             // 선택받는다 — 갈아탈 곳이 있고 일정이 틀어져도 대안이 있기 때문이다.
@@ -131,16 +190,26 @@ object Market {
             val logFreq = ln(1.0 + freq.toDouble())
             val logFare = ln(fareRatio)
 
+            // 앞자리를 깔면 총 좌석이 줄고, 대신 출장객에게 더 매력적이다.
+            val cabin = Economics.cabin(seats, airline.bizShare)
+
             offers += Offer(
                 route = r,
                 fare = fare,
-                seats = seats,
+                bizSeats = cabin.biz,
+                econSeats = cabin.econ,
                 bizUtil = -Balance.BIZ_PRICE_SENS * logFare +
                     Balance.BIZ_SERVICE_W * service +
-                    Balance.BIZ_FREQ_W * logFreq + common,
+                    Balance.BIZ_FREQ_W * logFreq +
+                    Balance.BIZ_CABIN_UTIL_W * airline.bizShare + common,
                 leiUtil = -Balance.LEI_PRICE_SENS * logFare +
                     Balance.LEI_SERVICE_W * service +
                     Balance.LEI_FREQ_W * logFreq + common,
+                takeup = premiumTakeup(
+                    brand = brand,
+                    service = service,
+                    facilityAppeal = endpointBusinesses.sumOf { it.type.premiumAppeal },
+                ),
             )
         }
         if (offers.isEmpty()) return emptyList()
@@ -157,8 +226,14 @@ object Market {
 
         val unmet = DoubleArray(1)
         val fringeUtil = fringeUtility(Geo.pairKey(a.id, b.id), dist)
+        // 출장객이 먼저 고른다 (수익 관리). 앞자리든 뒷자리든 앉을 수 있지만, 앞자리를
+        // 살 사람은 takeup 만큼뿐이라 좌석 풀이 객실 전체는 아니다 ([Offer.bizCapacity]).
+        for (o in offers) o.remaining = o.bizCapacity
         allocate(offers, demand.business * induced, unmet, fringeUtil) { it.bizUtil }
             .also { served -> offers.forEachIndexed { i, o -> o.biz = served[i] } }
+        // 레저는 **이코노미만** 쓴다. 출장객이 앞자리를 다 못 채웠어도 그 자리는
+        // 관광객에게 열리지 않는다 — 그게 객실을 나눈다는 뜻이다.
+        for (o in offers) o.remaining = (o.econSeats - o.bizInEcon).coerceAtLeast(0.0)
         allocate(offers, demand.leisure * induced, unmet, fringeUtil) { it.leiUtil }
             .also { served -> offers.forEachIndexed { i, o -> o.lei = served[i] } }
         unmetOut[Geo.pairKey(a.id, b.id)] = unmet[0]
@@ -168,7 +243,9 @@ object Market {
         // 못 실었어도 그렇다.
         val marketTotal = (demand.business + demand.leisure) * induced
         return offers.map { o ->
-            val revenue = o.biz * o.fare * Balance.BIZ_YIELD + o.lei * o.fare * Balance.LEI_YIELD
+            val revenue = o.bizInCabin * o.fare * Balance.BIZ_CABIN_YIELD +
+                o.bizInEcon * o.fare * Balance.BIZ_YIELD +
+                o.lei * o.fare * Balance.LEI_YIELD
             RouteOutcome(
                 routeId = o.route.id,
                 bizPax = o.biz,
@@ -177,6 +254,8 @@ object Market {
                 fare = o.fare,
                 localRevenue = revenue,
                 share = if (marketTotal <= 0) 0.0 else ((o.biz + o.lei) / marketTotal).coerceIn(0.0, 1.0),
+                bizCabinPax = o.bizInCabin,
+                bizSeatsOffered = o.bizSeats,
             )
         }
     }
@@ -249,6 +328,78 @@ object Market {
             s < mid - half -> "약함"
             else -> "보통"
         }
+    }
+
+    /**
+     * 출장 수요 중 **이 회사에게 앞자리 값을 낼 사람**의 비율.
+     *
+     * 앞자리는 좌석이 아니라 대접을 사는 자리다. 같은 구간이라도 라운지가 있고 서비스가
+     * 좋고 이름이 알려진 회사에게 먼저 몰린다 — 그래서 프리미엄 비율을 회사·노선마다
+     * 다르게 잡는다. 예전에는 [Balance.BIZ_CABIN_TAKEUP] 하나로 모두 같았고, 그러면
+     * 객실 크기를 정하는 계산이 **누구에게나 똑같아** 회사 성격이 드러나지 않았다.
+     *
+     * 세 축 모두 기준점 대비 증감이라, 평범한 회사(서비스 3 · 브랜드
+     * [Balance.PREMIUM_BRAND_REF] · 시설 없음)는 정확히 기준 비율을 받는다. 여기에
+     * 상·하한을 두는 이유는 [Balance.BIZ_CABIN_TAKEUP_MIN] 에 적어 뒀다.
+     *
+     * 이 값은 **누구를 태우는가**가 아니라 **얼마를 받는가**만 바꾼다. 손님을 끌어오는
+     * 쪽은 로짓 효용이 따로 맡는다 (서비스와 부대시설은 거기에도 이미 들어간다) —
+     * 두 곳에서 같은 축을 세게 걸면 좋은 회사가 손님도 더 받고 단가도 더 받아
+     * 격차가 제곱으로 벌어진다.
+     */
+    /**
+     * 노선 하나의 프리미엄 비율. **노선에 따로 태운 서비스**([Route.serviceExtra])까지 센다 —
+     * 시장 계산이 보는 것과 같은 값이어야 하므로 도시쌍이 아니라 노선을 받는다.
+     * 회사 등급만 보면 서비스를 얹어 둔 노선을 몇 %p 씩 낮게 잡아, 화면과 AI 가
+     * 실제보다 작은 객실을 답으로 낸다.
+     */
+    fun premiumTakeup(airline: Airline, route: Route): Double {
+        val a = Cities[route.from]
+        val b = Cities[route.to]
+        return premiumTakeup(
+            brand = (airline.brandIn(a.region) + airline.brandIn(b.region)) / 2.0,
+            service = (airline.serviceLevel + route.serviceExtra).toDouble(),
+            facilityAppeal = airline.businesses
+                .filter { it.city == route.from || it.city == route.to }
+                .sumOf { it.type.premiumAppeal },
+        )
+    }
+
+    /**
+     * 노선망 전체의 프리미엄 비율 — **출장 수요로 가중한** 평균.
+     *
+     * 객실 비중은 회사 단위 설정이므로, 앞자리를 살 손님이 실제로 어디에 있는지에
+     * 맞춰야 한다. 노선 수로 평균 내면 간선 하나에 출장객이 몰려 있어도 작은 지선들이
+     * 같은 표를 행사해서, 지선에 라운지를 몇 개 낸 회사가 정작 손님 대부분이 타는
+     * 저(低)매력 간선을 무시하고 객실을 키운다 — 그 앞자리는 빈 채로 난다.
+     *
+     * 가중치는 공급 좌석이 아니라 **수요**다. 공급은 이 함수가 정하려는 값(객실 비중)에
+     * 다시 의존하고 분기마다 편수 따라 출렁인다. 같은 함수 안에서 객실 비중의 다른
+     * 축(노선망 출장 비중)도 같은 잣대를 쓴다.
+     *
+     * 노선이 없으면 홈 공항 기준으로 돌려준다 — 빈 평균은 NaN 이다.
+     */
+    fun networkPremiumTakeup(airline: Airline, routes: List<Route>): Double {
+        var weighted = 0.0
+        var total = 0.0
+        for (r in routes) {
+            val w = Demand.annualBase(Cities[r.from], Cities[r.to]).business
+            if (w <= 0.0) continue
+            weighted += premiumTakeup(airline, r) * w
+            total += w
+        }
+        if (total <= 0.0) {
+            return premiumTakeup(airline, Route(-1, airline.id, airline.home, airline.home))
+        }
+        return weighted / total
+    }
+
+    fun premiumTakeup(brand: Double, service: Double, facilityAppeal: Double): Double {
+        val appeal = Balance.PREMIUM_SERVICE_W * (service - Balance.PREMIUM_SERVICE_REF) +
+            Balance.PREMIUM_BRAND_W * (brand - Balance.PREMIUM_BRAND_REF) +
+            Balance.PREMIUM_FACILITY_W * facilityAppeal
+        return (Balance.BIZ_CABIN_TAKEUP * (1.0 + appeal))
+            .coerceIn(Balance.BIZ_CABIN_TAKEUP_MIN, Balance.BIZ_CABIN_TAKEUP_MAX)
     }
 
     /**
@@ -401,7 +552,7 @@ object Market {
         val links = HashMap<String, HashMap<String, MutableList<Pair<String, Route>>>>()
         for (r in state.routes) {
             val o = base[r.id] ?: continue
-            val left = o.seats - o.localPax
+            val left = o.econSpare
             if (left <= 1.0) continue
             spare[r.id] = left
             val perAirline = links.getOrPut(r.airlineId) { HashMap() }

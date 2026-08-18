@@ -79,9 +79,30 @@ object Economics {
         )
     }
 
-    /** 분기 총 공급 좌석 (편도 편수 × 좌석). */
+    /** 분기 총 공급 좌석 (편도 편수 × 좌석). 전 좌석 이코노미 배치 기준이다. */
     fun quarterlySeats(freq: Int, avgSeats: Double): Double =
         freq * 2.0 * Balance.WEEKS_PER_QUARTER * avgSeats
+
+    /** 좌석 배치 — 같은 바닥을 비즈니스와 이코노미가 나눠 쓴다. */
+    data class Cabin(val biz: Double, val econ: Double) {
+        val total: Double get() = biz + econ
+    }
+
+    /**
+     * 전 좌석 이코노미 배치([quarterlySeats])를 비즈니스 비중만큼 갈라 준다.
+     *
+     * 비즈니스 한 자리가 이코노미 [Balance.BIZ_SEAT_SPACE] 석의 바닥을 쓰므로,
+     * 비중을 올릴수록 **총 좌석이 줄어든다**. 이 감소분이 곧 객실의 값이다 —
+     * 이게 없으면 좌석을 공짜로 고급화할 수 있어 전 노선이 비즈니스가 된다.
+     */
+    fun cabin(allEconomySeats: Double, bizShare: Double): Cabin {
+        val s = bizShare.coerceIn(0.0, Balance.BIZ_SHARE_MAX)
+        if (s <= 0.0) return Cabin(0.0, allEconomySeats)
+        return Cabin(
+            biz = allEconomySeats * s / Balance.BIZ_SEAT_SPACE,
+            econ = allEconomySeats * (1.0 - s),
+        )
+    }
 
     /** 분기 총 편도 운항 횟수. */
     fun quarterlyLegs(freq: Int): Double = freq * 2.0 * Balance.WEEKS_PER_QUARTER
@@ -98,6 +119,8 @@ object Economics {
         planes: List<Plane>,
         pax: Double,
         revenue: Double,
+        bizCabinPax: Double = 0.0,
+        bizSeatsOffered: Double = 0.0,
     ): RouteCost {
         if (planes.isEmpty() || route.freq <= 0) return RouteCost()
         val from = Cities[route.from]
@@ -140,7 +163,13 @@ object Economics {
         val landing = Balance.LANDING_BASE * feeAvg * (landingSeats / 150.0) * inflation
         val nav = legs * dist * Balance.NAV_PER_KM * inflation
         val serviceTotal = airline.serviceLevel + route.serviceExtra
-        val paxService = pax * (Balance.PAX_SERVICE_BASE + Balance.PAX_SERVICE_PER_LEVEL * serviceTotal) * inflation
+        // 앞자리 손님은 기내식·라운지가 더 붙는다 — 단가가 높은 만큼 원가도 따라온다.
+        // 좌석 유지비는 **깔아 놓은 만큼** 나간다 (비어도 승무원·갤리·정비는 그대로).
+        val cabinUpkeep = bizSeatsOffered * Balance.BIZ_CABIN_SEAT_COST * standardFare(dist, 1.0)
+        val paxService = (
+            pax * (Balance.PAX_SERVICE_BASE + Balance.PAX_SERVICE_PER_LEVEL * serviceTotal) +
+                bizCabinPax * Balance.BIZ_CABIN_SERVICE + cabinUpkeep
+            ) * inflation
         val distribution = revenue * Balance.DISTRIBUTION_RATE
 
         return RouteCost(

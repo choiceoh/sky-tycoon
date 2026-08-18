@@ -76,6 +76,9 @@ sealed interface Command {
 
     data class UpgradeService(override val airlineId: String) : Command
 
+    /** 바닥 면적 중 비즈니스 객실에 내주는 비율을 정한다 (전 노선 공통). */
+    data class SetCabin(override val airlineId: String, val bizShare: Double) : Command
+
     data class SetAdBudget(override val airlineId: String, val region: Region, val amount: Double) : Command
 
     data class BuildBusiness(
@@ -121,6 +124,7 @@ object Actions {
             is Command.SellAircraft -> sellAircraft(state, airline, cmd)
             is Command.Loan -> loan(state, airline, cmd)
             is Command.UpgradeService -> upgradeService(state, airline)
+            is Command.SetCabin -> setCabin(state, airline, cmd)
             is Command.SetAdBudget -> setAdBudget(state, airline, cmd)
             is Command.BuildBusiness -> buildBusiness(state, airline, cmd)
             is Command.TradeShares -> tradeShares(state, airline, cmd)
@@ -620,6 +624,25 @@ object Actions {
 
     fun serviceUpgradeCost(state: GameState, airline: Airline): Double =
         Balance.SERVICE_UPGRADE_COST * state.world.inflation * airline.serviceLevel
+
+    /**
+     * 객실 배치를 바꾼다. 즉시 반영된다 — 개조 기간까지 모델링하면 조작이 무거워지고,
+     * 어차피 되돌리는 데도 같은 시간이 들어 판단의 성격이 바뀌지 않는다.
+     */
+    private fun setCabin(state: GameState, airline: Airline, cmd: Command.SetCabin): ActionResult {
+        val want = cmd.bizShare.coerceIn(0.0, Balance.BIZ_SHARE_MAX)
+        if (want == airline.bizShare) return ActionResult(state, true, "")
+        val next = state.withAirline(airline.id) { it.copy(bizShare = want) }
+        return ActionResult(
+            next,
+            true,
+            if (want <= 0.0) {
+                "전 좌석을 이코노미로 돌렸습니다."
+            } else {
+                "비즈니스 객실을 바닥의 ${(want * 100).toInt()}% 로 잡았습니다."
+            },
+        )
+    }
 
     private fun upgradeService(state: GameState, airline: Airline): ActionResult {
         if (airline.serviceLevel >= 5) return ActionResult.fail(state, "이미 최고 등급입니다.")
