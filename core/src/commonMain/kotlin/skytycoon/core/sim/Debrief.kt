@@ -36,7 +36,22 @@ object Debrief {
 
     private class Cause(val weight: Double, val line: DebriefLine)
 
-    fun lines(state: GameState, airline: Airline, current: QuarterResult, limit: Int = 4): List<DebriefLine> {
+    /**
+     * @param includeNetwork 노선망 이야기(탑승률·적자 노선)를 함께 넣을지.
+     *
+     *   금액 줄은 [QuarterResult] 에 박제된 **그 분기의 사실**이라 언제 다시 계산해도 같다.
+     *   반면 노선망 줄은 **지금 노선망**을 읽어 만든다 — 결산을 닫고 노선을 열거나 닫으면
+     *   근거가 발밑에서 바뀐다. 그래서 결산 직후(플레이어가 아직 아무것도 못 한 시점)의
+     *   대화상자에서만 켜고, 언제든 다시 그려지는 대시보드에서는 끈다. 대시보드에는
+     *   지금 노선망을 보는 "할 일" 패널이 따로 있어 그쪽이 제자리다.
+     */
+    fun lines(
+        state: GameState,
+        airline: Airline,
+        current: QuarterResult,
+        limit: Int = 4,
+        includeNetwork: Boolean = true,
+    ): List<DebriefLine> {
         val previous = airline.results.lastOrNull { it.turn == current.turn - 1 }
             ?: return listOf(openingLine(current))
 
@@ -46,7 +61,7 @@ object Debrief {
         val causes = buildList {
             addAll(revenueCauses(current, previous, floor))
             addAll(costCauses(current, previous, floor))
-            addAll(networkCauses(state, airline, current, previous, floor))
+            if (includeNetwork) addAll(networkCauses(state, airline, current, previous, floor))
         }
 
         return listOf(summaryLine(current, previous, floor)) +
@@ -199,9 +214,10 @@ object Debrief {
         floor: Double,
     ): List<Cause> {
         val out = mutableListOf<Cause>()
-        // 결산 대화상자를 닫은 뒤에도 대시보드가 이 해설을 다시 계산한다. 그사이 플레이어가
-        // 연 노선까지 근거로 삼으면, **그 분기에 있지도 않았던 노선**이 탑승률 하락의 원인으로
-        // 지목된다. 결산 결과가 붙어 있는 노선 — 즉 그 분기를 실제로 난 노선만 본다.
+        // 결산 결과가 붙어 있는 노선 — 즉 그 분기를 실제로 난 노선만 본다. 이번 분기에
+        // 새로 연 노선(결과가 없다)이 지난 분기 탑승률 하락의 원인으로 지목되면 안 된다.
+        // 반대로 결산 뒤에 **닫아 버린** 노선은 여기서 되살릴 수 없다 — 그래서 이 줄들은
+        // 결산 직후에만 쓴다 (lines 의 includeNetwork 설명 참고).
         val routes = state.routesOf(airline.id).filter { it.last != null }
 
         val lfDelta = current.loadFactor - previous.loadFactor

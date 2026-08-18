@@ -146,6 +146,25 @@ class DebriefTest {
         assertEquals(DebriefTone.FLAT, lines.first().tone)
     }
 
+    /**
+     * 노선망 줄은 **지금 노선망**을 읽으므로, 결산을 닫고 노선을 열거나 닫으면 근거가
+     * 발밑에서 바뀐다. 언제든 다시 그려지는 화면에서는 끌 수 있어야 한다.
+     */
+    @Test
+    fun canLeaveOutTheMutableNetworkLines() {
+        val prev = quarter(0, rpk = 800_000_000.0, asks = 1_000_000_000.0)
+        val now = quarter(1, rpk = 400_000_000.0, asks = 1_000_000_000.0, net = -5_000_000.0)
+        val s = stateWith(prev, now)
+
+        assertTrue(
+            Debrief.lines(s, s.player, now).any { it.text.contains("탑승률") },
+            "탑승률이 40%p 떨어졌는데 결산 직후에도 언급이 없다",
+        )
+        val moneyOnly = Debrief.lines(s, s.player, now, includeNetwork = false)
+        assertTrue(moneyOnly.none { it.text.contains("탑승률") }, "노선망 줄이 빠지지 않았다: $moneyOnly")
+        assertTrue(moneyOnly.first().text.contains("순익"), "금액 줄은 그대로 남아야 한다: $moneyOnly")
+    }
+
     /** 줄 수 상한을 지킨다. */
     @Test
     fun respectsLimit() {

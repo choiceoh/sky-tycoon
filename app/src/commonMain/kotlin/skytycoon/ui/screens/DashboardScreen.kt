@@ -93,7 +93,9 @@ fun DashboardScreen(vm: GameViewModel, wide: Boolean, onGoTo: (Tab) -> Unit) {
                     StatTile("탑승률", percent(last.loadFactor), loadFactorColor(last.loadFactor))
                 }
                 // 결산 대화상자를 닫고 나면 "왜 이렇게 됐나"가 통째로 사라진다. 여기에도 남긴다.
-                val debrief = Debrief.lines(s, player, last, limit = 3)
+                // 노선망 이야기는 빼고 금액 줄만 — 이 화면은 노선을 열고 닫은 뒤에도 다시
+                // 그려지므로 근거가 발밑에서 바뀐다. 지금 노선망은 아래 "할 일"이 본다.
+                val debrief = Debrief.lines(s, player, last, limit = 3, includeNetwork = false)
                 if (debrief.isNotEmpty()) {
                     VSpace(10)
                     for (line in debrief) {
