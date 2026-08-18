@@ -282,6 +282,12 @@ data class QuarterResult(
     val cash: Double = 0.0,
     val debt: Double = 0.0,
     val equity: Double = 0.0,
+    /**
+     * 그 분기의 항공유 값. 결산에서 "연료비가 왜 늘었나"를 짚으려면 **지난 분기의
+     * 유가**가 있어야 하는데, 세계 상태는 현재 값만 들고 있어 지나간 값을 되찾을 수 없다.
+     * 0 은 이 필드가 없던 시절의 세이브라는 뜻이라, 읽는 쪽이 원인 지목을 건너뛴다.
+     */
+    val oil: Double = 0.0,
 ) {
     /**
      * 같은 분기 실적을 합친다 (합병 시 프로포마 실적).
@@ -313,6 +319,8 @@ data class QuarterResult(
         cash = cash + o.cash,
         debt = debt + o.debt,
         equity = equity + o.equity,
+        // 유가는 세계 값이라 합치지 않는다 — 두 회사 실적을 더한다고 기름값이 두 배가 되지 않는다.
+        oil = oil,
     )
 
     val totalRevenue get() = revenue + cargoRevenue + businessIncome

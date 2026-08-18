@@ -13,7 +13,7 @@ import skytycoon.ui.SaveStorage
 import skytycoon.ui.Tab
 import java.io.File
 
-private class Shot(val name: String, val size: Size, val tab: Tab?) {
+private class Shot(val name: String, val size: Size, val tab: Tab, val vm: GameViewModel) {
     class Size(val w: Int, val h: Int, val density: Float)
 }
 
@@ -41,32 +41,42 @@ fun main(args: Array<String>) {
     vm.dismissReport()
     vm.message = null
 
+    // 분기 결산 대화상자도 한 장 찍는다. 새 해설이 여기 맨 위에 들어가는데, 열어 보지
+    // 않으면 문장이 넘치거나 잘려도 알 수 없다. 같은 판을 한 분기 더 굴려 리포트를 띄운다.
+    val reportVm = GameViewModel(MemorySaveStore())
+    reportVm.importSave(requireNotNull(vm.exportSave()))
+    reportVm.endTurn()
+    reportVm.message = null
+
+    // 시작 화면은 진행 중인 판이 없어야 나온다.
+    val freshVm = GameViewModel(MemorySaveStore())
+
     // 안드로이드 폰 세로가 기준 화면이다. 412x915dp @2x 로 찍어 dp 는 실제 폰과 같게,
     // 이미지는 읽을 수 있을 만큼 크게 만든다. 데스크톱은 넓은 화면 레이아웃 확인용.
     val phone = Shot.Size(824, 1830, 2f)
     val desktop = Shot.Size(1360, 900, 1f)
 
     val shots = listOf(
-        Shot("01-setup", phone, null),
-        Shot("02-dashboard", phone, Tab.DASHBOARD),
-        Shot("03-network", phone, Tab.NETWORK),
-        Shot("04-routes", phone, Tab.ROUTES),
-        Shot("05-fleet", phone, Tab.FLEET),
-        Shot("06-market", phone, Tab.MARKET),
-        Shot("07-manage", phone, Tab.MANAGE),
-        Shot("08-news", phone, Tab.NEWS),
-        Shot("90-desktop-network", desktop, Tab.NETWORK),
-        Shot("91-desktop-routes", desktop, Tab.ROUTES),
+        Shot("01-setup", phone, Tab.DASHBOARD, freshVm),
+        Shot("02-dashboard", phone, Tab.DASHBOARD, vm),
+        Shot("03-network", phone, Tab.NETWORK, vm),
+        Shot("04-routes", phone, Tab.ROUTES, vm),
+        Shot("05-fleet", phone, Tab.FLEET, vm),
+        Shot("06-market", phone, Tab.MARKET, vm),
+        Shot("07-manage", phone, Tab.MANAGE, vm),
+        Shot("08-news", phone, Tab.NEWS, vm),
+        Shot("09-report", phone, Tab.DASHBOARD, reportVm),
+        Shot("90-desktop-network", desktop, Tab.NETWORK, vm),
+        Shot("91-desktop-routes", desktop, Tab.ROUTES, vm),
     )
 
     for (shot in shots) {
-        val target = if (shot.tab == null) GameViewModel(MemorySaveStore()) else vm
         val scene = ImageComposeScene(
             width = shot.size.w,
             height = shot.size.h,
             density = Density(shot.size.density),
         ) {
-            App(target, shot.tab ?: Tab.DASHBOARD)
+            App(shot.vm, shot.tab)
         }
         val image = scene.render()
         val bytes = image.encodeToData()?.bytes ?: error("${shot.name} 렌더 실패")

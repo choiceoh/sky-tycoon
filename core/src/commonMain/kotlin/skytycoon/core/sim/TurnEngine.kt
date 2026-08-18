@@ -21,11 +21,14 @@ object TurnEngine {
         val rng = Rng(state.rngState)
         var s = state
 
+        val beforeRivals = s
         s = Ai.actAll(s, rng)
         // AI 매집이 우리 회사를 삼켰다면 그 자리에서 판이 끝난다. 그대로 밀고 나가면
         // 이미 사라진 회사로 한 분기를 더 굴려, 결과 화면과 자동 저장이 인수 다음 분기로
         // 뜨는데 게임 오버 뉴스만 인수 분기에 찍힌다.
         if (s.outcome != null) return s.copy(rngState = rng.state)
+        // 경쟁사가 무엇을 했는지 알려준다. 이게 없으면 상대가 순위표의 숫자로만 존재한다.
+        s = s.copy(news = s.news + RivalWatch.report(beforeRivals, s))
 
         s = Events.stepWorld(s, rng)
         s = Events.fire(s, rng)
@@ -161,6 +164,7 @@ object TurnEngine {
                 cash = airline.cash + cashFlow,
                 debt = airline.debt,
                 equity = equityAfter,
+                oil = s.world.oil,
             )
 
             s = s.withAirline(airline.id) {

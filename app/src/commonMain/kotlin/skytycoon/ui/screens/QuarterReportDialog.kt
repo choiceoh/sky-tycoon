@@ -16,7 +16,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skytycoon.core.model.QuarterResult
+import skytycoon.core.sim.Debrief
+import skytycoon.core.sim.DebriefLine
+import skytycoon.core.sim.DebriefTone
 import skytycoon.ui.Amber
+import skytycoon.ui.Coral
+import skytycoon.ui.Mint
 import skytycoon.ui.GameViewModel
 import skytycoon.ui.TextHigh
 import skytycoon.ui.TextLow
@@ -52,6 +57,22 @@ fun QuarterReportDialog(vm: GameViewModel, report: QuarterResult, onDismiss: () 
         },
         text = {
             Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+                // 계정과목보다 먼저 "무슨 일이 있었나"를 놓는다 — 스무 줄짜리 표를 스스로
+                // 뒤져 원인을 찾아내라고 하면 아무도 읽지 않는다.
+                Text("무슨 일이 있었나", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                VSpace(4)
+                for (line in Debrief.lines(s, s.player, report)) {
+                    Text(
+                        "· " + render(line),
+                        color = toneColor(line.tone),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                    )
+                }
+
+                VSpace(10)
+                HorizontalDivider()
+                VSpace(10)
                 Text("수입", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 KeyValue("여객 매출", moneyShort(report.revenue))
                 KeyValue("화물 매출", moneyShort(report.cargoRevenue))
@@ -115,4 +136,16 @@ fun QuarterReportDialog(vm: GameViewModel, report: QuarterResult, onDismiss: () 
         },
         confirmButton = { Button(onClick = onDismiss) { Text("확인") } },
     )
+}
+
+/** core 는 금액을 `{}` 로 비워 둔다 — 화폐 표기는 화면이 정한다. */
+internal fun render(line: DebriefLine): String {
+    val amount = line.amount ?: return line.text
+    return line.text.replace("{}", if (line.signed) signedMoney(amount) else moneyShort(amount))
+}
+
+internal fun toneColor(tone: DebriefTone) = when (tone) {
+    DebriefTone.GOOD -> Mint
+    DebriefTone.BAD -> Coral
+    DebriefTone.FLAT -> TextMid
 }
