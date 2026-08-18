@@ -112,6 +112,39 @@ class RivalWatchTest {
         )
     }
 
+    /**
+     * 인수로 넘어온 노선은 새로 연 것이 아니다. [skytycoon.core.sim.Stock] 이 노선 id 를
+     * 그대로 두고 주인만 바꾸므로, 그 회사의 지난 분기 목록에만 견주면 물려받은 노선이
+     * 통째로 "신규 진입"으로 잡힌다 — 회사 하나를 삼킨 분기에 거짓 경보가 쏟아진다.
+     */
+    @Test
+    fun doesNotMistakeInheritedRoutesForEntry() {
+        val before = freshGame()
+        val mine = before.routesOf(before.playerId).first()
+        val rivals = before.livingAirlines.filter { it.id != before.playerId }
+        val acquirer = rivals[0]
+        val prey = rivals[1]
+
+        // 먹잇감이 우리 안방과 우리 노선에 이미 떠 있었다.
+        val preyRoutes = listOf(
+            Route(before.routes.maxOf { it.id } + 1, prey.id, mine.from, mine.to, freq = 7),
+            Route(before.routes.maxOf { it.id } + 2, prey.id, before.player.home, "sydney", freq = 7),
+        )
+        val base = before.copy(routes = before.routes + preyRoutes)
+
+        // 인수 — 노선 id 는 그대로, 주인만 바뀌고 먹잇감은 사라진다.
+        val after = base.copy(
+            airlines = base.airlines.map { if (it.id == prey.id) it.copy(alive = false) else it },
+            routes = base.routes.map { if (it.airlineId == prey.id) it.copy(airlineId = acquirer.id) else it },
+        )
+
+        val news = RivalWatch.report(base, after)
+        assertTrue(
+            news.none { it.headline.contains("진입") || it.headline.contains("취항") },
+            "인수로 물려받은 노선을 신규 진입으로 알렸다: $news",
+        )
+    }
+
     /** 한 분기에 쏟아지는 양을 묶어 자른다 — 안 그러면 뉴스 탭이 경쟁사 로그가 된다. */
     @Test
     fun capsPerQuarter() {

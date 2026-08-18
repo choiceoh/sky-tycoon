@@ -86,7 +86,20 @@ object Debrief {
      * 합계로 재면 라운지 하나 지은 분기가 "승객 단가가 올랐다"로 잘못 설명된다.
      */
     private fun revenueCauses(current: QuarterResult, previous: QuarterResult, floor: Double): List<Cause> {
-        if (current.pax <= 0 || previous.pax <= 0) return emptyList()
+        if (current.pax <= 0 && previous.pax <= 0) return emptyList()
+        // 한쪽이 0 이면 단가를 나눌 수 없다. 그렇다고 통째로 건너뛰면 20만 명을 태우다
+        // 한 명도 못 태운 분기가 **원인 없는 순익 급락**으로만 남는다 — 가장 중요한 사실이
+        // 바로 그 정지인데. 이럴 때는 물량 이야기만 한다.
+        if (current.pax <= 0 || previous.pax <= 0) {
+            val delta = current.revenue - previous.revenue
+            if (abs(delta) < floor) return emptyList()
+            val text = if (current.pax <= 0) {
+                "운항이 끊겨 여객 매출이 사라졌습니다 ({})"
+            } else {
+                "운항을 재개해 여객 매출 {}"
+            }
+            return listOf(Cause(abs(delta), DebriefLine(text, tone(delta), amount = delta, signed = true)))
+        }
         val wasYield = previous.revenue / previous.pax
         val nowYield = current.revenue / current.pax
         val volume = (current.pax - previous.pax) * wasYield

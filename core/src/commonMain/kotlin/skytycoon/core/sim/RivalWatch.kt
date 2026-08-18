@@ -62,7 +62,15 @@ object RivalWatch {
         val now = after.routesOf(rivalId).associateBy { it.id }
         val out = mutableListOf<Signal>()
 
-        val opened = now.values.filter { it.id !in old }
+        // 회사를 삼킨 분기에는 노선 변화를 읽지 않는다. Stock.merge 는 노선 id 를 그대로 둔 채
+        // 주인만 바꾸고 같은 도시쌍은 편수를 합치므로, 그 회사의 지난 분기 목록에만 견주면
+        // 물려받은 노선이 통째로 "신규 진입"으로, 합쳐진 편수가 "증편"으로 잡힌다 —
+        // 시장에 좌석이 늘지도 않았는데 "우리 노선 다섯 곳에 진입" 이 뜬다.
+        // 인수 자체는 Stock 이 따로 알린다.
+        val ownerBefore = before.routes.associate { it.id to it.airlineId }
+        if (now.values.any { ownerBefore[it.id] != null && ownerBefore[it.id] != rivalId }) return out
+
+        val opened = now.values.filter { it.id !in ownerBefore }
         // 안방은 따로 센다. 내가 아직 그 구간에 안 떠 있어도 홈 공항에 들어온 것은 위협이다.
         val atHome = opened.filter { it.touches(home) }
         val onMine = opened.filter { !it.touches(home) && pairKey(it.from, it.to) in myPairs }

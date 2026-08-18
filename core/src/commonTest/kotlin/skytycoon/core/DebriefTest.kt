@@ -123,6 +123,17 @@ class DebriefTest {
         assertEquals(DebriefTone.FLAT, lines.first().tone)
     }
 
+    /** 손님을 한 명도 못 태운 분기의 원인은 "운항 정지" 그 자체다 — 침묵하면 안 된다. */
+    @Test
+    fun namesTheStopWhenTrafficGoesToZero() {
+        val prev = quarter(0, revenue = 100_000_000.0, pax = 200_000.0)
+        val now = quarter(1, revenue = 0.0, pax = 0.0, net = -40_000_000.0, rpk = 0.0, asks = 0.0)
+        val s = stateWith(prev, now)
+        val lines = Debrief.lines(s, s.player, now)
+
+        assertTrue(lines.any { it.text.contains("운항이 끊겨") }, "운항 정지를 짚지 못했다: $lines")
+    }
+
     /** 잔돈 수준으로 움직인 분기는 조용해야 한다 — 매번 네 줄을 채우면 아무도 안 읽는다. */
     @Test
     fun saysNothingWhenNothingMoved() {
