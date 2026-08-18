@@ -186,7 +186,12 @@ object Balance {
     const val BIZ_CABIN_YIELD = 3.40
 
     /**
-     * 출장 수요 중 **실제로 앞자리 값을 낼 사람**의 비율.
+     * 출장 수요 중 **실제로 앞자리 값을 낼 사람**의 기준 비율.
+     *
+     * 회사마다 다르다 — 서비스 등급·브랜드·양 끝 공항의 부대시설이 이 값을
+     * [BIZ_CABIN_TAKEUP_MIN]..[BIZ_CABIN_TAKEUP_MAX] 사이에서 밀고 당긴다
+     * ([skytycoon.core.sim.Market.premiumTakeup]). 여기 적힌 값은 평범한 회사
+     * (서비스 3 · 브랜드 [PREMIUM_BRAND_REF] · 시설 없음)의 몫이다 — 캠페인 중반의 중앙값이 그쯤이다.
      *
      * 이 게임의 "출장 수요"는 운임에 둔감한 승객 전체(간선에서 절반, 장거리에서 80%)라
      * 프리미엄 객실 수요와 같지 않다. 이 구분이 없으면 30% 객실도 늘 꽉 차서
@@ -206,6 +211,45 @@ object Balance {
      * 좌석이 줄어도 손님이 더 늘어, 어느 노선에서든 키울수록 이득이었다.
      */
     const val BIZ_CABIN_UTIL_W = 0.8
+
+    // 앞자리 값을 낼 손님은 **아무 회사한테나** 그러지 않는다. 아래 세 축이
+    // [BIZ_CABIN_TAKEUP] 을 회사·노선마다 밀고 당긴다.
+
+    /**
+     * 서비스 등급 1 단계가 프리미엄 수요를 밀어 올리는 비율. 기준은 [PREMIUM_SERVICE_REF].
+     *
+     * 세 축 중 가장 세다 — 앞자리를 사는 이유가 곧 기내 서비스라, 여기가 약하면
+     * 등급 올리기(26백만 달러 + 기재당 분기 운영비)가 값을 못 한다.
+     */
+    const val PREMIUM_SERVICE_W = 0.20
+    const val PREMIUM_SERVICE_REF = 3.0
+
+    /**
+     * 브랜드 1점이 프리미엄 수요를 밀어 올리는 비율. 기준은 [PREMIUM_BRAND_REF].
+     *
+     * 이 축은 [AD_BRAND_K] 가 브랜드를 **희소하게** 만든 뒤에야 뜻이 있다. 광고비에
+     * 정비례하던 시절에는 전 회사가 상한 100 이라 아무것도 가르지 못했다.
+     */
+    const val PREMIUM_BRAND_W = 0.0055
+    const val PREMIUM_BRAND_REF = 45.0
+
+    /**
+     * 양 끝 공항의 [skytycoon.core.model.BusinessType.premiumAppeal] 합이 미는 비율.
+     *
+     * 라운지가 1.0 이므로 양 끝에 하나씩이면 +50% 다. 시설은 **그 도시에서만** 값을
+     * 하므로, 허브를 정해 몰아 짓는 쪽이 넓게 흩뿌리는 쪽보다 낫다.
+     */
+    const val PREMIUM_FACILITY_W = 0.25
+
+    /**
+     * 프리미엄 비율의 하한·상한.
+     *
+     * 하한이 없으면 신생 회사의 앞자리가 통째로 안 팔려 객실이 순수한 벌칙이 되고,
+     * 상한이 없으면 서비스 5 + 라운지 두 개가 출장 수요를 거의 전부 프리미엄으로
+     * 바꿔 [BIZ_CABIN_TAKEUP] 이 걸어 둔 희소성이 사라진다.
+     */
+    const val BIZ_CABIN_TAKEUP_MIN = 0.10
+    const val BIZ_CABIN_TAKEUP_MAX = 0.42
 
     /** 비즈니스 객실 승객 1인당 추가 서비스 원가 (기내식·라운지). */
     const val BIZ_CABIN_SERVICE = 18.0
@@ -347,8 +391,30 @@ object Balance {
     const val DILUTION_LIFETIME_CAP = 1.0
 
     // --- 마케팅 ---
-    /** 광고비 100만 달러당 브랜드 포인트 */
-    const val AD_EFFICIENCY = 42.0
+    /**
+     * 브랜드 상승폭 = 이 계수 × √(분기 광고비 백만 달러 + 부대시설 환산).
+     *
+     * **체감**이어야 한다. 예전에는 광고비에 정비례(100만 달러당 42점)했는데,
+     * [BRAND_DECAY] 로 역산하면 분기 24만 달러면 상한 100 에 눌러앉는다 — 매출이
+     * 억 단위인 회사에게 공짜라, 3년이면 **아홉 개 회사가 전부 100** 이었다.
+     * 이름값이 모두 같으면 이름값은 변수가 아니다.
+     *
+     * 제곱근을 씌우면 "알려지기는 쉽고 유명해지기는 비싸다"가 된다. 균형점은
+     * 이 계수 ÷ (1 - [BRAND_DECAY]) × √지출 = 30 × √지출 이라, 분기 100만이면 30,
+     * 600만이면 73, 1,100만이어야 상한에 닿는다.
+     */
+    const val AD_BRAND_K = 3.0
+
+    /**
+     * 부대사업의 [skytycoon.core.model.BusinessType.brandBoost] 를 **광고비로 환산**하는
+     * 비율 (백만 달러 / 분기).
+     *
+     * 브랜드 상승을 제곱근 안에서 더해야 광고와 시설이 같은 체감 곡선을 탄다. 밖에서
+     * 더하면 라운지 하나가 균형점을 +40 씩 밀어 올려 — 1,800만 달러짜리 시설이
+     * 분기 400만 달러의 광고를 영구히 대체한다.
+     */
+    const val BRAND_FACILITY_AD = 0.4
+
     const val BRAND_DECAY = 0.90
     const val BRAND_MAX = 100.0
     const val SERVICE_UPGRADE_COST = 26e6

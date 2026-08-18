@@ -247,12 +247,53 @@ class RegressionTest {
 
         val charged = s.player.lastResult!!.adSpend
         val expected = brandBefore * Balance.BRAND_DECAY +
-            charged / 1e6 * Balance.AD_EFFICIENCY / s.world.inflation
+            Balance.AD_BRAND_K * kotlin.math.sqrt(charged / 1e6 / s.world.inflation)
         val actual = s.player.brandIn(region)
         assertTrue(
             abs(actual - expected.coerceAtMost(Balance.BRAND_MAX)) < 0.5,
             "청구액($charged)과 브랜드 반영이 어긋난다: 기대 $expected, 실제 $actual",
         )
+    }
+
+    /**
+     * 광고 효과는 **체감**해야 한다.
+     *
+     * 광고비에 정비례하던 시절에는 분기 24만 달러면 상한 100 에 눌러앉았다 — 매출이
+     * 억 단위인 회사에게 공짜라, 세 해 만에 아홉 회사가 전부 100 이었다. 이름값이
+     * 모두 같으면 이름값은 변수가 아니고, 그 위에 얹은 프리미엄 수요 배분도 죽는다.
+     */
+    @Test
+    fun `광고 효과는 체감한다`() {
+        val region = skytycoon.core.model.Region.AS
+        fun gainFrom(millions: Double): Double {
+            var s = fresh()
+            val before = s.player.brandIn(region)
+            s = Actions.execute(s, Command.SetAdBudget("hanseong", region, millions * 1e6)).state
+            s = TurnEngine.advance(s)
+            return s.player.brandIn(region) - before * Balance.BRAND_DECAY
+        }
+        val small = gainFrom(4.0)
+        val big = gainFrom(16.0)
+        println("[광고 체감] 400만 → +${(small * 10).toInt() / 10.0} · 1,600만 → +${(big * 10).toInt() / 10.0}")
+        assertTrue(big > small, "광고비를 네 배 썼는데 브랜드가 더 안 올랐다")
+        assertTrue(
+            big < small * 3.0,
+            "광고비 네 배에 효과가 세 배를 넘는다 — 체감이 없으면 상한에 눌러앉아 이름값이 변수가 아니게 된다",
+        )
+    }
+
+    /**
+     * 흔한 광고비로는 상한에 못 닿아야 한다 — 닿으면 회사끼리 이름값이 갈리지 않는다.
+     */
+    @Test
+    fun `평범한 광고비로는 인지도 상한에 닿지 않는다`() {
+        var s = fresh()
+        s = Actions.execute(s, Command.SetAdBudget("hanseong", skytycoon.core.model.Region.AS, 6e6)).state
+        repeat(12) { s = TurnEngine.advance(s) }
+        val brand = s.player.brandIn(skytycoon.core.model.Region.AS)
+        println("[인지도 수렴] 분기 600만 달러 3년 → ${(brand * 10).toInt() / 10.0}")
+        assertTrue(brand < Balance.BRAND_MAX * 0.9, "분기 600만 달러로 3년이면 상한에 닿는다 (현재 $brand)")
+        assertTrue(brand > 30.0, "분기 600만 달러를 3년 부었는데 이름값이 안 붙는다 (현재 $brand)")
     }
 
     @Test

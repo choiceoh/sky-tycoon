@@ -2,6 +2,7 @@ package skytycoon.core.sim
 
 import skytycoon.core.data.AircraftCatalog
 import skytycoon.core.data.Cities
+import skytycoon.core.model.Airline
 import skytycoon.core.model.City
 import skytycoon.core.model.GameState
 import skytycoon.core.model.Route
@@ -64,6 +65,8 @@ private class Offer(
     val econSeats: Double,
     val bizUtil: Double,
     val leiUtil: Double,
+    /** 이 회사가 이 노선에서 출장객 중 몇 %에게 앞자리 값을 받아내는가. */
+    val takeup: Double,
 ) {
     val seats: Double get() = bizSeats + econSeats
     var remaining: Double = seats
@@ -74,10 +77,10 @@ private class Offer(
     /**
      * **비즈니스 운임을 낸** 출장객.
      *
-     * 출장 수요 전체가 앞자리 값을 내지는 않는다 ([Balance.BIZ_CABIN_TAKEUP]) —
-     * 프리미엄 수요보다 객실을 크게 깔면 그만큼 빈 채로 난다.
+     * 출장 수요 전체가 앞자리 값을 내지는 않고([Balance.BIZ_CABIN_TAKEUP]), 그 비율은
+     * 회사마다 다르다([takeup]) — 프리미엄 수요보다 객실을 크게 깔면 그만큼 빈 채로 난다.
      */
-    val bizInCabin: Double get() = minOf(biz * Balance.BIZ_CABIN_TAKEUP, bizSeats)
+    val bizInCabin: Double get() = minOf(biz * takeup, bizSeats)
 
     /** 나머지 출장객 — 이코노미 좌석에 앉아 [Balance.BIZ_YIELD] 만 낸다. */
     val bizInEcon: Double get() = biz - bizInCabin
@@ -138,9 +141,8 @@ object Market {
                     airline.slotsAt(b.id).toDouble() / capacityB
                 ) / 2.0
             val prestige = planes.sumOf { AircraftCatalog[it.typeId].prestige } / planes.size
-            val bizFacilities = airline.businesses
-                .filter { it.city == a.id || it.city == b.id }
-                .sumOf { it.type.demandBoost }
+            val endpointBusinesses = airline.businesses.filter { it.city == a.id || it.city == b.id }
+            val bizFacilities = endpointBusinesses.sumOf { it.type.demandBoost }
 
             // 양 끝에서 이 회사가 **다른 어디로 더 갈 수 있는가**. 연결편이 많은 회사가
             // 선택받는다 — 갈아탈 곳이 있고 일정이 틀어져도 대안이 있기 때문이다.
@@ -185,6 +187,11 @@ object Market {
                 leiUtil = -Balance.LEI_PRICE_SENS * logFare +
                     Balance.LEI_SERVICE_W * service +
                     Balance.LEI_FREQ_W * logFreq + common,
+                takeup = premiumTakeup(
+                    brand = brand,
+                    service = service,
+                    facilityAppeal = endpointBusinesses.sumOf { it.type.premiumAppeal },
+                ),
             )
         }
         if (offers.isEmpty()) return emptyList()
@@ -302,6 +309,39 @@ object Market {
             s < mid - half -> "약함"
             else -> "보통"
         }
+    }
+
+    /**
+     * 출장 수요 중 **이 회사에게 앞자리 값을 낼 사람**의 비율.
+     *
+     * 앞자리는 좌석이 아니라 대접을 사는 자리다. 같은 구간이라도 라운지가 있고 서비스가
+     * 좋고 이름이 알려진 회사에게 먼저 몰린다 — 그래서 프리미엄 비율을 회사·노선마다
+     * 다르게 잡는다. 예전에는 [Balance.BIZ_CABIN_TAKEUP] 하나로 모두 같았고, 그러면
+     * 객실 크기를 정하는 계산이 **누구에게나 똑같아** 회사 성격이 드러나지 않았다.
+     *
+     * 세 축 모두 기준점 대비 증감이라, 평범한 회사(서비스 3 · 브랜드
+     * [Balance.PREMIUM_BRAND_REF] · 시설 없음)는 정확히 기준 비율을 받는다. 여기에
+     * 상·하한을 두는 이유는 [Balance.BIZ_CABIN_TAKEUP_MIN] 에 적어 뒀다.
+     *
+     * 이 값은 **누구를 태우는가**가 아니라 **얼마를 받는가**만 바꾼다. 손님을 끌어오는
+     * 쪽은 로짓 효용이 따로 맡는다 (서비스와 부대시설은 거기에도 이미 들어간다) —
+     * 두 곳에서 같은 축을 세게 걸면 좋은 회사가 손님도 더 받고 단가도 더 받아
+     * 격차가 제곱으로 벌어진다.
+     */
+    fun premiumTakeup(airline: Airline, a: City, b: City): Double = premiumTakeup(
+        brand = (airline.brandIn(a.region) + airline.brandIn(b.region)) / 2.0,
+        service = airline.serviceLevel.toDouble(),
+        facilityAppeal = airline.businesses
+            .filter { it.city == a.id || it.city == b.id }
+            .sumOf { it.type.premiumAppeal },
+    )
+
+    fun premiumTakeup(brand: Double, service: Double, facilityAppeal: Double): Double {
+        val appeal = Balance.PREMIUM_SERVICE_W * (service - Balance.PREMIUM_SERVICE_REF) +
+            Balance.PREMIUM_BRAND_W * (brand - Balance.PREMIUM_BRAND_REF) +
+            Balance.PREMIUM_FACILITY_W * facilityAppeal
+        return (Balance.BIZ_CABIN_TAKEUP * (1.0 + appeal))
+            .coerceIn(Balance.BIZ_CABIN_TAKEUP_MIN, Balance.BIZ_CABIN_TAKEUP_MAX)
     }
 
     /**

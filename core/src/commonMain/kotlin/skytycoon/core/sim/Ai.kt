@@ -479,14 +479,21 @@ object Ai {
                 val total = ds.sumOf { it.total }
                 if (total <= 0.0) 0.0 else ds.sumOf { it.business } / total
             }
-        val trait = when (state.airline(airlineId).trait) {
+        val a = state.airline(airlineId)
+        val trait = when (a.trait) {
             Trait.PREMIUM -> 1.25
             Trait.VALUE -> 0.55
             else -> 1.0
         }
+        // 앞자리를 실제로 팔아낼 수 있는 만큼만 깐다. 서비스 등급·브랜드·부대시설이
+        // 좋은 회사는 같은 객실을 더 채우므로 더 크게 깔아도 남는다 — 이걸 안 보면
+        // 대접에 투자한 회사가 그 값을 못 받고, 아홉 회사가 다 같은 크기로 수렴한다.
+        val appeal = routes
+            .map { Market.premiumTakeup(a, Cities[it.from], Cities[it.to]) }
+            .average() / Balance.BIZ_CABIN_TAKEUP
         // 출장 비중이 절반이면 바닥의 20% 안팎이 최적이었다 (CabinProbe 참고).
-        val want = (bizShare * 0.38 * trait).coerceIn(0.0, Balance.BIZ_SHARE_MAX)
-        val now = state.airline(airlineId).bizShare
+        val want = (bizShare * 0.38 * trait * appeal).coerceIn(0.0, Balance.BIZ_SHARE_MAX)
+        val now = a.bizShare
         if (kotlin.math.abs(want - now) < 0.02) return state
         return cmd(state, Command.SetCabin(airlineId, want))
     }
@@ -546,7 +553,15 @@ object Ai {
             t != BusinessType.HANGAR || a.businesses.none { it.type == BusinessType.HANGAR }
         }
         if (candidates.isEmpty()) return s
-        val type = rng.pick(candidates)
+        // 프리미엄 성향은 앞자리를 파는 시설(라운지·호텔)에 무게를 둔다. 무작위로만
+        // 고르면 성향이 부대사업에 드러나지 않아, 고급 노선을 표방하는 회사가 여행사만
+        // 잔뜩 짓고 정작 프리미엄 매력은 평범한 일이 생긴다.
+        val type = if (a.trait == Trait.PREMIUM) {
+            val posh = candidates.filter { it.premiumAppeal > 0.0 }
+            rng.pick(posh.ifEmpty { candidates })
+        } else {
+            rng.pick(candidates)
+        }
         val city = served
             .filter { c -> a.businesses.none { it.type == type && it.city == c } }
             .maxByOrNull { a.slotsAt(it) } ?: return s

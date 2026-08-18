@@ -33,6 +33,7 @@ import skytycoon.core.model.Region
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Command
 import skytycoon.core.sim.Economics
+import skytycoon.core.sim.Market
 import skytycoon.core.sim.Balance
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
@@ -142,6 +143,32 @@ fun ManageScreen(vm: GameViewModel, wide: Boolean) {
                 fontSize = 11.sp,
             )
             VSpace(8)
+            // 앞자리를 얼마나 팔 수 있는지를 안 보여 주면, 라운지·서비스 등급에 쓴 돈이
+            // 어디로 갔는지 알 길이 없어 객실 비중이 그냥 감으로 고르는 숫자가 된다.
+            val routes = s.routesOf(player.id).filter { it.active }
+            val takeup = routes
+                .map { Market.premiumTakeup(player, Cities[it.from], Cities[it.to]) }
+                .average()
+                .let { if (it.isNaN()) Market.premiumTakeup(player, Cities[player.home], Cities[player.home]) else it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("앞자리 구매율", color = TextMid, fontSize = 12.sp)
+                Box(Modifier.width(8.dp))
+                Text(
+                    "출장 손님의 ${(takeup * 100).toInt()}%",
+                    color = if (takeup >= Balance.BIZ_CABIN_TAKEUP) Amber else Coral,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            VSpace(4)
+            Text(
+                "서비스 등급 ${player.serviceLevel} · 인지도 ${decimals(player.brandIn(Cities[player.home].region), 0)} · " +
+                    "라운지·호텔 ${player.businesses.count { it.type.premiumAppeal > 0.0 }}곳. " +
+                    "대접이 좋을수록 같은 객실을 더 채웁니다 (평범한 회사는 ${(Balance.BIZ_CABIN_TAKEUP * 100).toInt()}%).",
+                color = TextLow,
+                fontSize = 11.sp,
+            )
+            VSpace(8)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 // 마지막 칸은 상한에서 끌어온다 — 상수를 올렸는데 프리셋이 안 따라가면
                 // 플레이어가 최대치를 아예 고를 수 없다.
@@ -159,7 +186,8 @@ fun ManageScreen(vm: GameViewModel, wide: Boolean) {
         VSpace(12)
         Panel(title = "지역별 광고") {
             Text(
-                "브랜드 인지도는 매 분기 조금씩 빠집니다. 취항 지역에 꾸준히 태워야 점유율이 붙습니다.",
+                "브랜드 인지도는 매 분기 조금씩 빠지고, 광고 효과는 쓸수록 무뎌집니다 — " +
+                    "알려지기는 싸고 유명해지기는 비쌉니다. 그 지역 부대사업도 이름값을 보탭니다.",
                 color = TextLow,
                 fontSize = 11.sp,
             )
@@ -198,7 +226,8 @@ fun ManageScreen(vm: GameViewModel, wide: Boolean) {
         VSpace(12)
         Panel(title = "부대사업") {
             Text(
-                "취항 도시에만 낼 수 있습니다. 분기 수입이 들어오고, 그 도시를 오가는 우리 노선의 매력이 올라갑니다.",
+                "취항 도시에만 낼 수 있습니다. 분기 수입이 들어오고, 그 도시를 오가는 우리 노선의 매력이 " +
+                    "올라갑니다. 라운지·호텔은 그 도시를 드나드는 출장객이 앞자리를 사게 만듭니다.",
                 color = TextLow,
                 fontSize = 11.sp,
             )
@@ -298,9 +327,9 @@ fun ManageScreen(vm: GameViewModel, wide: Boolean) {
 }
 
 private fun businessHint(type: BusinessType): String = when (type) {
-    BusinessType.HOTEL -> "분기 수입이 크고 브랜드에도 도움"
+    BusinessType.HOTEL -> "분기 수입이 크고 브랜드·앞자리 수요에도 도움"
     BusinessType.DUTY_FREE -> "안정적인 부수입"
     BusinessType.AGENCY -> "그 도시 노선의 송객력 상승"
     BusinessType.HANGAR -> "전 노선 정비비 12% 절감"
-    BusinessType.LOUNGE -> "브랜드 인지도에 가장 효과적"
+    BusinessType.LOUNGE -> "브랜드와 앞자리 수요에 가장 효과적"
 }

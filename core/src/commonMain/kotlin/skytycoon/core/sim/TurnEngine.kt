@@ -11,6 +11,7 @@ import skytycoon.core.model.Plane
 import skytycoon.core.model.QuarterResult
 import skytycoon.core.model.Route
 import skytycoon.core.model.RouteResult
+import kotlin.math.sqrt
 
 object TurnEngine {
 
@@ -327,12 +328,15 @@ object TurnEngine {
                 val totalWanted = a.adBudget.values.sum()
                 val brand = a.brand.mapValues { (region, v) ->
                     val regionShare = if (totalWanted <= 0.0) 0.0 else (a.adBudget[region] ?: 0.0) / totalWanted
-                    val gain = spent * regionShare / 1e6 * Balance.AD_EFFICIENCY / state.world.inflation
-                    // 그 지역 도시에 낸 부대사업도 이름값을 만든다.
+                    val adMillions = spent * regionShare / 1e6 / state.world.inflation
+                    // 그 지역 도시에 낸 부대사업도 이름값을 만든다 — 광고비로 환산해
+                    // **같은 제곱근 안에서** 더한다. 밖에서 더하면 시설 하나가 균형점을
+                    // 통째로 밀어 올려 광고를 영구히 대체해 버린다.
                     val facilities = a.businesses
                         .filter { b -> Cities[b.city].region == region }
-                        .sumOf { b -> b.type.brandBoost }
-                    (v * Balance.BRAND_DECAY + gain + facilities).coerceIn(0.0, Balance.BRAND_MAX)
+                        .sumOf { b -> b.type.brandBoost } * Balance.BRAND_FACILITY_AD
+                    val gain = Balance.AD_BRAND_K * sqrt((adMillions + facilities).coerceAtLeast(0.0))
+                    (v * Balance.BRAND_DECAY + gain).coerceIn(0.0, Balance.BRAND_MAX)
                 }
                 a.copy(brand = brand, safety = (a.safety + 0.015).coerceAtMost(1.0))
             }

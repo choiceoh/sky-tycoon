@@ -1,6 +1,8 @@
 package skytycoon.core
 
 import skytycoon.core.data.Cities
+import skytycoon.core.model.Business
+import skytycoon.core.model.BusinessType
 import skytycoon.core.model.GameState
 import skytycoon.core.model.Plane
 import skytycoon.core.model.Route
@@ -28,7 +30,16 @@ class CabinTest {
 
     private class R(val seats: Double, val cabinSeats: Double, val cabinPax: Double, val margin: Double)
 
-    private fun measure(from: String, to: String, type: String, share: Double, freq: Int): R {
+    private fun measure(
+        from: String,
+        to: String,
+        type: String,
+        share: Double,
+        freq: Int,
+        serviceLevel: Int = 3,
+        brand: Double = -1.0,
+        facilities: List<BusinessType> = emptyList(),
+    ): R {
         val base = NewGame.create(seed = 7)
         var s: GameState = base.copy(routes = emptyList(), planes = base.planes.map { it.copy(routeId = null) })
         val dist = Geo.distance(from, to)
@@ -41,7 +52,18 @@ class CabinTest {
             routes = listOf(Route(rid, "hanseong", from, to, freq = f, planeIds = listOf(pid))),
             nextId = rid + 1,
             airlines = s.airlines.map { a ->
-                if (a.id == "hanseong") a.copy(slots = a.slots + (from to 40) + (to to 40), bizShare = share) else a
+                if (a.id != "hanseong") {
+                    a
+                } else {
+                    a.copy(
+                        slots = a.slots + (from to 40) + (to to 40),
+                        bizShare = share,
+                        serviceLevel = serviceLevel,
+                        brand = if (brand < 0) a.brand else a.brand.mapValues { brand },
+                        // 시설은 양 끝에 하나씩 — 프리미엄 매력은 끝점에서만 값을 한다.
+                        businesses = facilities.flatMap { listOf(Business(it, from), Business(it, to)) },
+                    )
+                }
             },
         )
         val route = s.routes.first()
@@ -151,5 +173,58 @@ class CabinTest {
         val fill = big.cabinPax / big.cabinSeats
         println("[빈 앞자리] 런던-파리 최대 객실 ${big.cabinSeats.toInt()}석 중 ${big.cabinPax.toInt()}명 (${(fill * 100).toInt()}%)")
         assertTrue(fill < 0.85, "객실을 최대로 깔았는데도 다 찬다 — 프리미엄 수요가 희소하지 않다 (충전율 $fill)")
+    }
+
+    // ----------------------------------------------------- 앞자리 수요는 어디로 몰리나
+
+    /**
+     * 앞자리는 좌석이 아니라 대접을 사는 자리다 — 같은 객실을 깔아도 **라운지가 있고
+     * 서비스가 좋고 이름이 알려진 회사**가 더 많이 판다.
+     *
+     * 이게 없으면 객실은 순수한 산수 문제라 아홉 개 회사가 전부 같은 답(20%)을 낸다.
+     */
+    @Test
+    fun `앞자리 수요는 대접이 좋은 회사로 몰린다`() {
+        // 객실을 최대로 깔아 **좌석이 아니라 수요가** 한계가 되게 한다. 좁게 깔면
+        // 양쪽 다 꽉 차서 이 테스트가 아무것도 못 잡는다.
+        val big = Balance.BIZ_SHARE_MAX
+        val plain = measure("london", "paris", "b727", big, 14, serviceLevel = 3, brand = 30.0)
+        val posh = measure(
+            "london", "paris", "b727", big, 14,
+            serviceLevel = 5, brand = 90.0, facilities = listOf(BusinessType.LOUNGE),
+        )
+        val plainFill = plain.cabinPax / plain.cabinSeats
+        val poshFill = posh.cabinPax / posh.cabinSeats
+        println(
+            "[프리미엄 쏠림] 평범(서비스3·브랜드30) ${(plainFill * 100).toInt()}% · " +
+                "고급(서비스5·브랜드90·라운지) ${(poshFill * 100).toInt()}%",
+        )
+        assertTrue(plainFill < 0.9, "평범한 회사도 앞자리가 다 찬다 — 이 테스트가 아무것도 못 잡는다")
+        assertTrue(
+            poshFill > plainFill * 1.2,
+            "대접이 좋은 회사인데 앞자리가 더 안 팔린다 ($poshFill vs $plainFill)",
+        )
+    }
+
+    /**
+     * 그 쏠림이 **객실 크기 결정을 바꿔야** 한다. 앞자리를 더 파는 회사는 더 크게 깔 수
+     * 있어야 하고, 아니라면 매력도는 마진만 조금 올려 주는 장식이지 판단거리가 아니다.
+     */
+    @Test
+    fun `대접이 좋은 회사는 객실을 더 크게 깐다`() {
+        val curve = listOf(0.0, 0.10, 0.20, 0.30, Balance.BIZ_SHARE_MAX)
+        fun best(service: Int, brand: Double, fac: List<BusinessType>): Double = curve
+            .maxByOrNull { measure("seoul", "tokyo", "b727", it, 14, service, brand, fac).margin }!!
+        fun curveOf(service: Int, brand: Double, fac: List<BusinessType>) = curve.joinToString(" ") {
+            "${(it * 100).toInt()}%:${(measure("seoul", "tokyo", "b727", it, 14, service, brand, fac).margin * 100).toInt()}%"
+        }
+        val plain = best(3, 30.0, emptyList())
+        val posh = best(5, 90.0, listOf(BusinessType.LOUNGE, BusinessType.HOTEL))
+        println("[최적 객실] 평범 ${(plain * 100).toInt()}% ← ${curveOf(3, 30.0, emptyList())}")
+        println(
+            "[최적 객실] 고급 ${(posh * 100).toInt()}% ← " +
+                curveOf(5, 90.0, listOf(BusinessType.LOUNGE, BusinessType.HOTEL)),
+        )
+        assertTrue(posh > plain, "대접이 좋아도 최적 객실 크기가 그대로다 ($posh vs $plain)")
     }
 }

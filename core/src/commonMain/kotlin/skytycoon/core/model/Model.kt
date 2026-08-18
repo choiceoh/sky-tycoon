@@ -88,6 +88,12 @@ enum class Trait(val label: String) {
     BALANCED("균형"),
 }
 
+/**
+ * @param premiumAppeal 그 도시를 드나드는 손님 중 **앞자리 값을 낼 사람**을 얼마나 늘리는가.
+ *   [demandBoost] 가 "손님이 더 온다"라면 이쪽은 "같은 손님이 더 비싼 자리를 산다"다.
+ *   라운지가 기준점(1.0)이다 — 프리미엄 객실을 파는 시설 그 자체다. 여행사는 값을
+ *   깎아 파는 창구라 0 이고, 정비창은 손님이 볼 일이 없다.
+ */
 enum class BusinessType(
     val label: String,
     val cost: Double,
@@ -95,12 +101,13 @@ enum class BusinessType(
     val demandBoost: Double,
     val brandBoost: Double,
     val maintDiscount: Double,
+    val premiumAppeal: Double = 0.0,
 ) {
-    HOTEL("호텔", 48e6, 2.9e6, 0.05, 3.0, 0.0),
-    DUTY_FREE("면세점", 30e6, 2.2e6, 0.02, 2.0, 0.0),
+    HOTEL("호텔", 48e6, 2.9e6, 0.05, 3.0, 0.0, premiumAppeal = 0.6),
+    DUTY_FREE("면세점", 30e6, 2.2e6, 0.02, 2.0, 0.0, premiumAppeal = 0.2),
     AGENCY("여행사", 22e6, 1.2e6, 0.06, 1.0, 0.0),
     HANGAR("정비창", 65e6, 0.0, 0.0, 0.0, 0.12),
-    LOUNGE("라운지", 18e6, 0.5e6, 0.03, 4.0, 0.0),
+    LOUNGE("라운지", 18e6, 0.5e6, 0.03, 4.0, 0.0, premiumAppeal = 1.0),
 }
 
 data class Scenario(
