@@ -51,6 +51,18 @@ class DebriefTest {
         assertTrue(lines.first().text.contains("첫 결산"), lines.first().text)
     }
 
+    /** 매출이 0 인 첫 분기에 "매출의 0% 가 순익으로 남았습니다"는 본전을 친 것처럼 읽힌다. */
+    @Test
+    fun describesFirstQuarterLossWithoutRevenue() {
+        val current = quarter(0, revenue = 0.0, net = -12_000_000.0, pax = 0.0, rpk = 0.0, asks = 0.0)
+        val s = stateWith(current)
+        val line = Debrief.lines(s, s.player, current).first()
+
+        assertEquals(DebriefTone.BAD, line.tone)
+        assertTrue(line.text.contains("고정비"), "적자인데 마진 이야기를 했다: ${line.text}")
+        assertEquals(12_000_000.0, line.amount)
+    }
+
     /** 유가가 오른 분기의 연료비 급증은 유가를 원인으로 지목해야 한다. */
     @Test
     fun blamesOilForFuelSpike() {

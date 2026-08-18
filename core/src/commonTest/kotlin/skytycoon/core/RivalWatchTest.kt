@@ -1,5 +1,6 @@
 package skytycoon.core
 
+import skytycoon.core.data.Cities
 import skytycoon.core.model.GameState
 import skytycoon.core.model.NewsKind
 import skytycoon.core.model.Route
@@ -177,6 +178,47 @@ class RivalWatchTest {
         assertTrue(
             news.none { it.headline.contains("증편") },
             "인수로 합쳐진 편수를 증편으로 알렸다: $news",
+        )
+    }
+
+    /**
+     * `stockMoves` 는 `Ai.act` 의 맨 끝이라 같은 분기에 노선을 열고 회사를 삼킬 수 있다.
+     * 인수 흔적을 걸러내겠다고 그 분기 소식을 통째로 묻으면, 진짜 진입이 하필
+     * 인수 분기에만 사라진다.
+     */
+    @Test
+    fun keepsRealEntriesInTakeoverQuarters() {
+        val before = freshGame()
+        val mine = before.routesOf(before.playerId).first()
+        val rivals = before.livingAirlines.filter { it.id != before.playerId }
+        val acquirer = rivals[0]
+        val prey = rivals[1]
+        val preyPlane = before.planesOf(prey.id).firstOrNull() ?: error("먹잇감에 기재가 있어야 한다")
+
+        val preyRoute = Route(before.routes.maxOf { it.id } + 1, prey.id, "sydney", "madrid", freq = 7)
+        val base = before.copy(routes = before.routes + preyRoute)
+
+        // 같은 분기에 (1) 우리 노선에 진짜로 진입하고 (2) 먹잇감을 삼켰다.
+        val freshRoute = Route(base.routes.maxOf { it.id } + 1, acquirer.id, mine.from, mine.to, freq = 7)
+        val after = base.copy(
+            airlines = base.airlines.map { if (it.id == prey.id) it.copy(alive = false) else it },
+            routes = base.routes.map { if (it.airlineId == prey.id) it.copy(airlineId = acquirer.id) else it } +
+                freshRoute,
+            planes = base.planes.map { if (it.id == preyPlane.id) it.copy(airlineId = acquirer.id) else it },
+        )
+
+        val news = RivalWatch.report(base, after)
+        // 우리 노선이 안방을 지나면 "진입" 이 아니라 "안방 취항" 으로 뜬다 — 어느 쪽이든
+        // 그 회사 이름과 새 노선의 도시가 소식에 남아 있어야 한다.
+        val opened = news.filter { it.headline.contains(acquirer.name) }
+        assertTrue(opened.isNotEmpty(), "인수 분기라는 이유로 진짜 진입까지 묻었다: $news")
+        assertTrue(
+            opened.any { Cities.name(freshRoute.to) in it.headline + it.body },
+            "새로 연 노선이 소식에 없다: $opened",
+        )
+        assertTrue(
+            news.none { "시드니" in it.headline + it.body || "마드리드" in it.headline + it.body },
+            "물려받은 노선을 신규 진입으로 알렸다: $news",
         )
     }
 

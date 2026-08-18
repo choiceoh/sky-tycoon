@@ -71,7 +71,16 @@ object Debrief {
     // ------------------------------------------------------------------ 총평
 
     private fun openingLine(current: QuarterResult): DebriefLine {
-        val margin = if (current.totalRevenue > 0) current.net / current.totalRevenue else 0.0
+        // 매출이 없으면 마진을 잴 수 없다. 0 으로 눌러 "매출의 0% 가 순익으로 남았습니다"
+        // 라고 하면 본전을 친 것처럼 읽히는데, 정작 제목에는 적자가 찍혀 있다.
+        if (current.totalRevenue <= 0.0) {
+            return if (current.net < 0) {
+                DebriefLine("첫 결산입니다. 매출 없이 고정비만 {} 나갔습니다.", DebriefTone.BAD, amount = -current.net)
+            } else {
+                DebriefLine("첫 결산입니다. 아직 움직인 것이 없습니다.", DebriefTone.FLAT)
+            }
+        }
+        val margin = current.net / current.totalRevenue
         return DebriefLine(
             "첫 결산입니다. 매출의 ${pct(margin)}% 가 순익으로 남았습니다.",
             if (current.net >= 0) DebriefTone.GOOD else DebriefTone.BAD,
