@@ -6,7 +6,6 @@ import skytycoon.core.model.NewsItem
 import skytycoon.core.model.NewsKind
 import skytycoon.core.model.Route
 import skytycoon.core.model.Trait
-import skytycoon.core.text.Josa
 import kotlin.math.roundToInt
 
 /**
@@ -19,6 +18,10 @@ import kotlin.math.roundToInt
  *
  * 명령을 가로채지 않고 **분기 전후 상태를 견주어** 뽑는다. AI 쪽을 건드리지 않으므로
  * AI 가 새 수를 배워도 여기가 따라 바뀔 필요가 없다.
+ *
+ * 우리 지분을 사들이는 일은 여기서 다루지 않는다 — [Actions] 가 매수 시점에 이미 알린다.
+ * 회사가 통째로 넘어가는 사안이라 그쪽은 분기 상한에 걸리지 않고 언제나 뜨는 편이 맞고,
+ * 여기서 또 만들면 같은 매수가 두 줄로 뜨면서 상한의 한 자리까지 잡아먹는다.
  */
 object RivalWatch {
 
@@ -40,47 +43,9 @@ object RivalWatch {
 
         val signals = after.livingAirlines
             .filter { it.id != player.id && before.airlineOrNull(it.id)?.alive == true }
-            .flatMap { rival ->
-                stakeSignal(before, after, rival.id, player.id) +
-                    routeSignals(before, after, rival.id, myPairs, player.home)
-            }
+            .flatMap { rival -> routeSignals(before, after, rival.id, myPairs, player.home) }
 
         return signals.sortedByDescending { it.priority }.take(limit).map { it.item }
-    }
-
-    // ------------------------------------------------------------------ 지분
-
-    /** 우리 지분을 사들이는 것은 노선 싸움과 급이 다르다 — 회사가 통째로 넘어간다. */
-    private fun stakeSignal(
-        before: GameState,
-        after: GameState,
-        rivalId: String,
-        playerId: String,
-    ): List<Signal> {
-        val was = Stock.ownershipRatio(before, rivalId, playerId)
-        val now = Stock.ownershipRatio(after, rivalId, playerId)
-        if (now - was < 0.005) return emptyList()
-
-        val name = after.airline(rivalId).name
-        // 자사주 매입은 규칙상 막혀 있다(Actions.tradeShares). 방어 수단은 증자로
-        // 희석하는 것과, 상대 지분을 맞사서 되받아치는 것뿐이다 — 없는 수를 권하지 않는다.
-        val warning = if (now >= 0.35) {
-            "50% 를 넘기면 회사를 잃습니다. 유상증자로 희석하거나 상대 지분을 맞사서 되받아쳐야 합니다."
-        } else {
-            "50% 를 넘기면 회사를 잃습니다."
-        }
-        return listOf(
-            Signal(
-                // 지분율이 높을수록 위로 올라와, 인수 임박이 노선 소식에 묻히지 않는다.
-                priority = 200.0 + now * 100,
-                item = NewsItem(
-                    turn = after.turn,
-                    kind = NewsKind.RIVAL,
-                    headline = "$name${Josa.subject(name)} 우리 회사 지분 ${pct(now)}% 확보",
-                    body = "이번 분기에만 ${pct(now - was)}%p 를 사들였습니다. $warning",
-                ),
-            ),
-        )
     }
 
     // ------------------------------------------------------------------ 노선

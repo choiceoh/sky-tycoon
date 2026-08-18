@@ -34,6 +34,20 @@ class JosaTest {
         assertEquals("가", Josa.subject("A32")) // 삼십이
     }
 
+    /**
+     * 숫자의 종성은 실제 소리대로여야 한다. 받침 유무만 맞추면 이/가·은/는 은 통과하지만
+     * ㄹ 만 따로 보는 [Josa.by] 에서 "영으로"가 "영로"로 샌다.
+     */
+    @Test
+    fun digitsCarryTheRightFinalConsonant() {
+        assertEquals("으로", Josa.by("100")) // 영 → ㅇ
+        assertEquals("으로", Josa.by("6")) // 육 → ㄱ
+        assertEquals("으로", Josa.by("3")) // 삼 → ㅁ
+        assertEquals("로", Josa.by("1")) // 일 → ㄹ
+        assertEquals("로", Josa.by("747")) // 칠 → ㄹ
+        assertEquals("로", Josa.by("2")) // 이 → 받침 없음
+    }
+
     /** 받침을 알 수 없으면 받침 없는 쪽으로 — 어느 쪽이든 틀리지만 덜 어색하다. */
     @Test
     fun fallsBackWhenUnknown() {

@@ -40,7 +40,9 @@ object Debrief {
         val previous = airline.results.lastOrNull { it.turn == current.turn - 1 }
             ?: return listOf(openingLine(current))
 
-        val floor = maxOf(current.totalRevenue, previous.totalRevenue) * MATERIAL
+        // 매출이 두 분기 다 0 이면(운항이 끊긴 회사) 기준이 0 이 되어, 변한 것이 없는데도
+        // "순익 +$0" 과 "연료비 +$0" 이 줄줄이 올라온다. 바닥을 1 달러로 받쳐 둔다.
+        val floor = (maxOf(current.totalRevenue, previous.totalRevenue) * MATERIAL).coerceAtLeast(1.0)
         val causes = buildList {
             addAll(revenueCauses(current, previous, floor))
             addAll(costCauses(current, previous, floor))
@@ -79,11 +81,14 @@ object Debrief {
     /**
      * 매출 변화를 **몇 명을 태웠나**와 **한 명에게 얼마를 받았나**로 가른다.
      * 같은 매출 하락이라도 손님이 준 것과 값이 눌린 것은 손 쓸 방법이 정반대다.
+     *
+     * 단가는 **여객 매출만** 나눈다. 부대사업 수입은 손님 수와 무관하게 오르내리므로
+     * 합계로 재면 라운지 하나 지은 분기가 "승객 단가가 올랐다"로 잘못 설명된다.
      */
     private fun revenueCauses(current: QuarterResult, previous: QuarterResult, floor: Double): List<Cause> {
         if (current.pax <= 0 || previous.pax <= 0) return emptyList()
-        val wasYield = previous.totalRevenue / previous.pax
-        val nowYield = current.totalRevenue / current.pax
+        val wasYield = previous.revenue / previous.pax
+        val nowYield = current.revenue / current.pax
         val volume = (current.pax - previous.pax) * wasYield
         val price = (nowYield - wasYield) * current.pax
 
@@ -93,7 +98,7 @@ object Debrief {
                     Cause(
                         abs(volume),
                         DebriefLine(
-                            "수송객 ${signedPct(current.pax / previous.pax - 1)} → 매출 {}",
+                            "수송객 ${signedPct(current.pax / previous.pax - 1)} → 여객 매출 {}",
                             tone(volume),
                             amount = volume,
                             signed = true,
@@ -106,7 +111,7 @@ object Debrief {
                     Cause(
                         abs(price),
                         DebriefLine(
-                            "승객 단가 ${signedPct(nowYield / wasYield - 1)} → 매출 {}",
+                            "승객 단가 ${signedPct(nowYield / wasYield - 1)} → 여객 매출 {}",
                             tone(price),
                             amount = price,
                             signed = true,
@@ -152,6 +157,11 @@ object Debrief {
             )
         }
 
+        val side = current.businessIncome - previous.businessIncome
+        if (abs(side) >= floor) {
+            out += Cause(abs(side), DebriefLine("부대사업 수입 {}", tone(side), amount = side, signed = true))
+        }
+
         if (current.extraordinaryCost > 0) {
             out += Cause(
                 current.extraordinaryCost,
@@ -176,7 +186,10 @@ object Debrief {
         floor: Double,
     ): List<Cause> {
         val out = mutableListOf<Cause>()
-        val routes = state.routesOf(airline.id)
+        // 결산 대화상자를 닫은 뒤에도 대시보드가 이 해설을 다시 계산한다. 그사이 플레이어가
+        // 연 노선까지 근거로 삼으면, **그 분기에 있지도 않았던 노선**이 탑승률 하락의 원인으로
+        // 지목된다. 결산 결과가 붙어 있는 노선 — 즉 그 분기를 실제로 난 노선만 본다.
+        val routes = state.routesOf(airline.id).filter { it.last != null }
 
         val lfDelta = current.loadFactor - previous.loadFactor
         if (abs(lfDelta) >= 0.03) {

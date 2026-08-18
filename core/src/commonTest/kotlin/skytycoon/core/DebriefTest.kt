@@ -97,6 +97,32 @@ class DebriefTest {
         assertTrue(Debrief.lines(s, s.player, now).any { it.text.contains("수송객") })
     }
 
+    /** 부대사업 수입이 오르내려도 그건 승객 단가가 아니다. */
+    @Test
+    fun doesNotBlameSideBusinessOnFares() {
+        val prev = quarter(0, revenue = 100_000_000.0, pax = 200_000.0)
+        // 손님도 운임도 그대로인데 라운지를 지어 부대사업 수입만 늘었다.
+        val now = quarter(1, revenue = 100_000_000.0, pax = 200_000.0, net = 18_000_000.0)
+            .copy(businessIncome = 8_000_000.0)
+        val s = stateWith(prev, now)
+        val lines = Debrief.lines(s, s.player, now)
+
+        assertTrue(lines.none { it.text.contains("단가") }, "부대사업 수입을 단가 탓으로 돌렸다: $lines")
+        assertTrue(lines.any { it.text.contains("부대사업") }, "부대사업 증가를 짚지 못했다: $lines")
+    }
+
+    /** 운항이 끊겨 매출이 0 인 분기에 "순익 +$0" 을 늘어놓지 않는다. */
+    @Test
+    fun staysQuietWhenGrounded() {
+        val prev = quarter(0, revenue = 0.0, fuel = 0.0, net = 0.0, pax = 0.0, rpk = 0.0, asks = 0.0)
+        val now = quarter(1, revenue = 0.0, fuel = 0.0, net = 0.0, pax = 0.0, rpk = 0.0, asks = 0.0)
+        val s = stateWith(prev, now)
+        val lines = Debrief.lines(s, s.player, now)
+
+        assertEquals(1, lines.size, "변한 것이 없는데 ${lines.size}줄이 나왔다: $lines")
+        assertEquals(DebriefTone.FLAT, lines.first().tone)
+    }
+
     /** 잔돈 수준으로 움직인 분기는 조용해야 한다 — 매번 네 줄을 채우면 아무도 안 읽는다. */
     @Test
     fun saysNothingWhenNothingMoved() {

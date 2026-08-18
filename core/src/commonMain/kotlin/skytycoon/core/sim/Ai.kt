@@ -598,6 +598,11 @@ object Ai {
         val candidates = s.livingAirlines
             .filter { it.id != airlineId }
             .filter { rival ->
+                // 이미 지분을 쌓아 둔 상대는 조건을 다시 묻지 않는다. 공격받던 회사가
+                // 실적을 회복하거나 몸집을 불리면 후보에서 빠지는데, 그러면 여태 모은
+                // 지분을 든 채 다른 회사로 갈아타게 된다 — 매 분기 밀어붙이기로 바꾼
+                // 의미가 바로 그 상황에서 사라진다.
+                if (Stock.ownershipRatio(s, airlineId, rival.id) >= COMMITTED_STAKE) return@filter true
                 val equity = Economics.equity(s, rival)
                 val ailing = rival.results.takeLast(4).sumOf { r -> r.net } < 0
                 // 휘청이는 회사이거나, 내가 두 배 가까이 크면 삼킬 만하다.

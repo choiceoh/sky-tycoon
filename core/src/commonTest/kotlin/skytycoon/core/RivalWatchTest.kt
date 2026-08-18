@@ -90,34 +90,26 @@ class RivalWatchTest {
         assertTrue(news.any { it.headline.contains("인하") }, "15% 인하가 묻혔다: $news")
     }
 
-    /** 우리 지분을 사들이는 일은 어떤 노선 소식보다 먼저 와야 한다. */
+    /**
+     * 지분 매집은 여기서 만들지 않는다 — [skytycoon.core.sim.Actions] 가 매수 시점에 이미
+     * 알리므로, 여기서 또 만들면 같은 매수가 두 줄로 뜨고 분기 상한의 한 자리까지 잡아먹는다.
+     */
     @Test
-    fun stakeOutranksRouteNews() {
+    fun leavesStakeNewsToActions() {
         val before = freshGame()
         val rival = before.livingAirlines.first { it.id != before.playerId }
         val player = before.player
-        val mine = before.routesOf(player.id).first()
 
         val after = before.copy(
             airlines = before.airlines.map {
-                if (it.id == rival.id) {
-                    it.copy(holdings = it.holdings + (player.id to player.shares * 0.2))
-                } else {
-                    it
-                }
+                if (it.id == rival.id) it.copy(holdings = it.holdings + (player.id to player.shares * 0.2)) else it
             },
-            routes = before.routes + Route(
-                id = before.routes.maxOf { it.id } + 1,
-                airlineId = rival.id,
-                from = mine.from,
-                to = mine.to,
-                freq = 7,
-            ),
         )
 
-        val news = RivalWatch.report(before, after)
-        assertTrue(news.first().headline.contains("지분"), "지분 매집이 맨 위가 아니다: $news")
-        assertTrue(news.first().headline.contains("20%"), "지분율이 보이지 않는다: ${news.first()}")
+        assertTrue(
+            RivalWatch.report(before, after).none { it.headline.contains("지분") },
+            "Actions 가 이미 알리는 지분 매집을 여기서 또 만들었다",
+        )
     }
 
     /** 한 분기에 쏟아지는 양을 묶어 자른다 — 안 그러면 뉴스 탭이 경쟁사 로그가 된다. */
