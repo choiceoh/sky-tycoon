@@ -365,6 +365,35 @@ object Market {
         )
     }
 
+    /**
+     * 노선망 전체의 프리미엄 비율 — **출장 수요로 가중한** 평균.
+     *
+     * 객실 비중은 회사 단위 설정이므로, 앞자리를 살 손님이 실제로 어디에 있는지에
+     * 맞춰야 한다. 노선 수로 평균 내면 간선 하나에 출장객이 몰려 있어도 작은 지선들이
+     * 같은 표를 행사해서, 지선에 라운지를 몇 개 낸 회사가 정작 손님 대부분이 타는
+     * 저(低)매력 간선을 무시하고 객실을 키운다 — 그 앞자리는 빈 채로 난다.
+     *
+     * 가중치는 공급 좌석이 아니라 **수요**다. 공급은 이 함수가 정하려는 값(객실 비중)에
+     * 다시 의존하고 분기마다 편수 따라 출렁인다. 같은 함수 안에서 객실 비중의 다른
+     * 축(노선망 출장 비중)도 같은 잣대를 쓴다.
+     *
+     * 노선이 없으면 홈 공항 기준으로 돌려준다 — 빈 평균은 NaN 이다.
+     */
+    fun networkPremiumTakeup(airline: Airline, routes: List<Route>): Double {
+        var weighted = 0.0
+        var total = 0.0
+        for (r in routes) {
+            val w = Demand.annualBase(Cities[r.from], Cities[r.to]).business
+            if (w <= 0.0) continue
+            weighted += premiumTakeup(airline, r) * w
+            total += w
+        }
+        if (total <= 0.0) {
+            return premiumTakeup(airline, Route(-1, airline.id, airline.home, airline.home))
+        }
+        return weighted / total
+    }
+
     fun premiumTakeup(brand: Double, service: Double, facilityAppeal: Double): Double {
         val appeal = Balance.PREMIUM_SERVICE_W * (service - Balance.PREMIUM_SERVICE_REF) +
             Balance.PREMIUM_BRAND_W * (brand - Balance.PREMIUM_BRAND_REF) +

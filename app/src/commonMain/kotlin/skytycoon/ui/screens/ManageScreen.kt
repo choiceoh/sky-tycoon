@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import skytycoon.core.data.Cities
 import skytycoon.core.model.BusinessType
 import skytycoon.core.model.Region
-import skytycoon.core.model.Route
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Command
 import skytycoon.core.sim.Economics
@@ -147,12 +146,9 @@ fun ManageScreen(vm: GameViewModel, wide: Boolean) {
             // 앞자리를 얼마나 팔 수 있는지를 안 보여 주면, 라운지·서비스 등급에 쓴 돈이
             // 어디로 갔는지 알 길이 없어 객실 비중이 그냥 감으로 고르는 숫자가 된다.
             val routes = s.routesOf(player.id).filter { it.active }
-            val takeup = if (routes.isEmpty()) {
-                // 아직 노선이 없으면 홈 공항 기준으로 보여 준다 — 빈 평균은 NaN 이다.
-                Market.premiumTakeup(player, Route(-1, player.id, player.home, player.home))
-            } else {
-                routes.map { Market.premiumTakeup(player, it) }.average()
-            }
+            // AI 가 객실을 정할 때와 **같은 함수**를 쓴다. 따로 평균 내면 화면이
+            // 보여 주는 값과 실제로 계산되는 값이 조용히 갈린다.
+            val takeup = Market.networkPremiumTakeup(player, routes)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("앞자리 구매율", color = TextMid, fontSize = 12.sp)
                 Box(Modifier.width(8.dp))

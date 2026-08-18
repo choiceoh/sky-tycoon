@@ -313,4 +313,42 @@ class CabinTest {
                 "(${r.inEcon.toInt()} > ${r.econSeats.toInt()})",
         )
     }
+
+    /**
+     * 노선망 평균 프리미엄 비율은 **출장 수요로 가중**해야 한다.
+     *
+     * 객실 비중은 회사 단위 설정이라, 앞자리를 살 손님이 실제로 어디에 있는지에 맞춰야
+     * 한다. 노선 수로 평균 내면 지선 여럿에 라운지를 낸 회사가 정작 출장객 대부분이 타는
+     * 간선을 무시하고 객실을 키운다 — 그 앞자리는 빈 채로 난다.
+     */
+    @Test
+    fun `노선망 프리미엄 비율은 출장 수요로 가중한다`() {
+        val base = NewGame.create(seed = 7)
+        // 출장객이 가장 몰리는 간선(런던–프랑크푸르트, 연 124,816명) 하나 +
+        // 가장 얇은 장거리 지선 넷(각 33,000명 안팎). 라운지는 지선에만 있다.
+        val trunk = Route(1, "britannia", "london", "frankfurt")
+        val spokes = listOf("auckland", "nairobi", "lima", "honolulu")
+            .mapIndexed { i, c -> Route(2 + i, "britannia", "london", c) }
+        val withLounges = base.airline("britannia").copy(
+            businesses = spokes.map { Business(BusinessType.LOUNGE, it.to) },
+        )
+        val routes = listOf(trunk) + spokes
+
+        val weighted = Market.networkPremiumTakeup(withLounges, routes)
+        val unweighted = routes.map { Market.premiumTakeup(withLounges, it) }.average()
+        val trunkOnly = Market.premiumTakeup(withLounges, trunk)
+        println(
+            "[가중 평균] 간선 ${(trunkOnly * 1000).toInt() / 10.0}% · " +
+                "노선수 평균 ${(unweighted * 1000).toInt() / 10.0}% · " +
+                "수요 가중 ${(weighted * 1000).toInt() / 10.0}%",
+        )
+        assertTrue(
+            unweighted > trunkOnly,
+            "지선 라운지가 노선수 평균을 못 끌어올린다 — 이 테스트가 아무것도 못 잡는다",
+        )
+        assertTrue(
+            weighted < unweighted - 0.01,
+            "얇은 지선 넷의 라운지가 출장객이 몰린 간선과 같은 표를 행사한다 ($weighted vs $unweighted)",
+        )
+    }
 }
