@@ -61,8 +61,12 @@ data class AircraftType(
     val turn: Double,
     val prestige: Double,
     /**
-     * 진영 제한. `"east"` 는 구소련권 기종으로, 냉전기에는 그 진영 항공사만 굴렸다.
-     * 빈 값이면 누구나 산다.
+     * 이 **기종이** 어느 진영 것인가. `"east"` 는 구소련권, 빈 값은 서방 기종이다.
+     *
+     * 이 값만으로 도입 가능 여부가 정해지지는 않는다 — 누가 살 수 있는지는
+     * [skytycoon.core.data.AircraftCatalog.operableBy] 가 항공사의 홈 공항과 연도까지
+     * 보고 정한다. 냉전기에는 제약이 양방향이라, 빈 값(서방 기종)이라고 아무나 사는
+     * 것도 아니다 — 모스크바 기반 항공사는 1991년까지 서방 기종을 못 산다.
      */
     val bloc: String = "",
 )
