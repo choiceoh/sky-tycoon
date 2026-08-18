@@ -88,7 +88,11 @@ object Companies {
             id = "soyuz", name = "소유즈항공", short = "SY", colorArgb = 0xFFB0543F,
             home = "moscow", trait = Trait.EXPAND, cash = 360e6, shares = 48e6,
             startFleet = listOf("tu134" to 6, "tu114" to 2),
-            startSlots = mapOf("moscow" to 26, "london" to 4, "paris" to 4, "delhi" to 5, "beijing" to 5),
+            // 국내선이 뼈대다 — 서방 취항은 상징적인 몇 편뿐이었다.
+            startSlots = mapOf(
+                "moscow" to 28, "stpetersburg" to 8, "novosibirsk" to 5, "tashkent" to 5,
+                "beijing" to 4, "london" to 3,
+            ),
             bonusKey = "fuel", bonusLabel = "국가 배급 연료",
             bonusDesc = "연료비를 6% 절감한다. 기름 먹는 자국기를 굴리려면 이게 있어야 한다.",
         ),

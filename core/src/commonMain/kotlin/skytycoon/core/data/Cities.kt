@@ -25,6 +25,10 @@ object Cities {
         City("delhi", "델리", "DEL", 28.61, 77.21, AS, econ = 38.0, tour = 60.0, slots = 50, fee = 0.70, growth = 1.072),
         City("manila", "마닐라", "MNL", 14.60, 120.98, AS, econ = 30.0, tour = 46.0, slots = 40, fee = 0.70, growth = 1.050),
         City("jakarta", "자카르타", "CGK", -6.21, 106.85, AS, econ = 33.0, tour = 44.0, slots = 42, fee = 0.70, growth = 1.065),
+        // 우랄 동쪽은 지리대로 아시아에 둔다 — 모스크바와는 권역이 갈리지만, 홈 공항
+        // 프리미엄은 끝점 기준이라 소련 국내선의 경쟁력에는 영향이 없다.
+        City("novosibirsk", "노보시비르스크", "OVB", 55.01, 82.94, AS, econ = 22.0, tour = 14.0, slots = 34, fee = 0.60, growth = 1.030),
+        City("tashkent", "타슈켄트", "TAS", 41.31, 69.24, AS, econ = 20.0, tour = 26.0, slots = 32, fee = 0.60, growth = 1.045),
 
         // --- 중동 ---
         City("dubai", "두바이", "DXB", 25.20, 55.27, ME, econ = 38.0, tour = 58.0, slots = 70, fee = 0.65, growth = 1.090),
@@ -38,9 +42,18 @@ object Cities {
         City("rome", "로마", "ROM", 41.90, 12.50, EU, econ = 54.0, tour = 88.0, slots = 54, fee = 1.20, growth = 1.026),
         City("madrid", "마드리드", "MAD", 40.42, -3.70, EU, econ = 50.0, tour = 72.0, slots = 56, fee = 1.10, growth = 1.035),
         City("zurich", "취리히", "ZRH", 47.38, 8.54, EU, econ = 55.0, tour = 56.0, slots = 40, fee = 1.55, growth = 1.028),
-        City("moscow", "모스크바", "MOW", 55.76, 37.62, EU, econ = 46.0, tour = 44.0, slots = 52, fee = 0.90, growth = 1.035),
+        // 제2세계의 정치 수도. 소비 시장은 서방보다 작았지만 국가·군수·행정 통행량이
+        // 막대했고, 공항도 셰레메티예보·도모데도보·브누코보로 나뉜 다공항 체제였다.
+        // econ 46 은 상파울루와 같은 칸이라 너무 낮았다.
+        City("moscow", "모스크바", "MOW", 55.76, 37.62, EU, econ = 62.0, tour = 52.0, slots = 64, fee = 0.90, growth = 1.035),
         City("istanbul", "이스탄불", "IST", 41.01, 28.98, EU, econ = 38.0, tour = 70.0, slots = 52, fee = 0.80, growth = 1.072),
         City("stockholm", "스톡홀름", "ARN", 59.33, 18.07, EU, econ = 40.0, tour = 48.0, slots = 36, fee = 1.30, growth = 1.030),
+        // 소련 국내선. 모스크바 한 도시만 두면 그 거대한 국내 수요가 지도에서 통째로
+        // 사라지고, 모스크바 기반 항공사는 서유럽 노선밖에 못 연다 — 실제와 정반대다.
+        // 상트페테르부르크는 제2도시, 노보시비르스크는 시베리아 관문(모스크바에서
+        // 2,800km), 타슈켄트는 중앙아시아 거점이다. 셋 다 관광 지표가 낮은 대신
+        // 착륙료가 싸서, 화려하진 않아도 꾸준한 국내 노선망이 된다.
+        City("stpetersburg", "상트페테르부르크", "LED", 59.94, 30.31, EU, econ = 30.0, tour = 54.0, slots = 40, fee = 0.75, growth = 1.032),
 
         // --- 북미 ---
         City("newyork", "뉴욕", "NYC", 40.71, -74.01, NA, econ = 100.0, tour = 88.0, slots = 96, fee = 1.80, growth = 1.028),

@@ -89,7 +89,7 @@ object AircraftCatalog {
     fun find(id: String): AircraftType? = byId[id]
 
     /** 구소련권 기종을 굴리는 진영의 홈 공항. */
-    private val EAST_HOMES = setOf("moscow")
+    private val EAST_HOMES = setOf("moscow", "stpetersburg", "novosibirsk", "tashkent")
 
     /**
      * 냉전이 풀려 동구권이 미국기를 살 수 있게 되는 해.
