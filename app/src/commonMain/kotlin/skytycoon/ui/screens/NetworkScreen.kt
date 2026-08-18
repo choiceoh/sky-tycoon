@@ -157,7 +157,7 @@ private fun CityPanel(vm: GameViewModel, city: City, onCompose: (String) -> Unit
                 if (closed) Chip("폐쇄 중", accent = Coral, selected = true)
             }
             VSpace(10)
-            KeyValue("경제 규모", decimals(city.econ * (s.cityState[city.id]?.dev ?: 1.0), 0))
+            KeyValue("정치·경제 비중", decimals(city.standing * (s.cityState[city.id]?.dev ?: 1.0), 0))
             KeyValue("관광 매력", decimals(city.tour, 0))
             KeyValue("착륙료", "표준의 ${decimals(city.fee, 2)}배")
         }

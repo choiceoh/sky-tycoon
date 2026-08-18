@@ -13,73 +13,74 @@ import skytycoon.core.model.Region.SA
 object Cities {
     val all: List<City> = listOf(
         // --- 아시아 ---
-        City("seoul", "서울", "SEL", 37.55, 126.97, AS, econ = 62.0, tour = 55.0, slots = 62, fee = 1.00, growth = 1.062),
-        City("tokyo", "도쿄", "TYO", 35.68, 139.69, AS, econ = 95.0, tour = 70.0, slots = 92, fee = 1.60, growth = 1.032),
-        City("osaka", "오사카", "OSA", 34.69, 135.50, AS, econ = 60.0, tour = 52.0, slots = 54, fee = 1.40, growth = 1.030),
-        City("beijing", "베이징", "PEK", 39.90, 116.41, AS, econ = 48.0, tour = 66.0, slots = 58, fee = 0.80, growth = 1.081),
-        City("shanghai", "상하이", "SHA", 31.23, 121.47, AS, econ = 54.0, tour = 54.0, slots = 60, fee = 0.80, growth = 1.085),
-        City("hongkong", "홍콩", "HKG", 22.32, 114.17, AS, econ = 70.0, tour = 72.0, slots = 56, fee = 1.30, growth = 1.045),
-        City("taipei", "타이베이", "TPE", 25.03, 121.57, AS, econ = 45.0, tour = 44.0, slots = 44, fee = 1.00, growth = 1.050),
-        City("bangkok", "방콕", "BKK", 13.75, 100.50, AS, econ = 42.0, tour = 86.0, slots = 56, fee = 0.75, growth = 1.060),
-        City("singapore", "싱가포르", "SIN", 1.35, 103.82, AS, econ = 60.0, tour = 66.0, slots = 60, fee = 1.10, growth = 1.055),
-        City("delhi", "델리", "DEL", 28.61, 77.21, AS, econ = 38.0, tour = 60.0, slots = 50, fee = 0.70, growth = 1.072),
-        City("manila", "마닐라", "MNL", 14.60, 120.98, AS, econ = 30.0, tour = 46.0, slots = 40, fee = 0.70, growth = 1.050),
-        City("jakarta", "자카르타", "CGK", -6.21, 106.85, AS, econ = 33.0, tour = 44.0, slots = 42, fee = 0.70, growth = 1.065),
+        City("seoul", "서울", "SEL", 37.55, 126.97, AS, standing = 62.0, tour = 55.0, slots = 62, fee = 1.00, growth = 1.062),
+        City("tokyo", "도쿄", "TYO", 35.68, 139.69, AS, standing = 95.0, tour = 70.0, slots = 92, fee = 1.60, growth = 1.032),
+        City("osaka", "오사카", "OSA", 34.69, 135.50, AS, standing = 60.0, tour = 52.0, slots = 54, fee = 1.40, growth = 1.030),
+        // 수도라 상하이보다 위여야 한다 — 경제 규모만 재면 뒤집혔었다.
+        City("beijing", "베이징", "PEK", 39.90, 116.41, AS, standing = 64.0, tour = 66.0, slots = 58, fee = 0.80, growth = 1.081),
+        City("shanghai", "상하이", "SHA", 31.23, 121.47, AS, standing = 54.0, tour = 54.0, slots = 60, fee = 0.80, growth = 1.085),
+        City("hongkong", "홍콩", "HKG", 22.32, 114.17, AS, standing = 70.0, tour = 72.0, slots = 56, fee = 1.30, growth = 1.045),
+        City("taipei", "타이베이", "TPE", 25.03, 121.57, AS, standing = 45.0, tour = 44.0, slots = 44, fee = 1.00, growth = 1.050),
+        City("bangkok", "방콕", "BKK", 13.75, 100.50, AS, standing = 42.0, tour = 86.0, slots = 56, fee = 0.75, growth = 1.060),
+        City("singapore", "싱가포르", "SIN", 1.35, 103.82, AS, standing = 60.0, tour = 66.0, slots = 60, fee = 1.10, growth = 1.055),
+        City("delhi", "델리", "DEL", 28.61, 77.21, AS, standing = 52.0, tour = 60.0, slots = 50, fee = 0.70, growth = 1.072),
+        City("manila", "마닐라", "MNL", 14.60, 120.98, AS, standing = 30.0, tour = 46.0, slots = 40, fee = 0.70, growth = 1.050),
+        City("jakarta", "자카르타", "CGK", -6.21, 106.85, AS, standing = 33.0, tour = 44.0, slots = 42, fee = 0.70, growth = 1.065),
         // 우랄 동쪽은 지리대로 아시아에 둔다 — 모스크바와는 권역이 갈리지만, 홈 공항
         // 프리미엄은 끝점 기준이라 소련 국내선의 경쟁력에는 영향이 없다.
-        City("novosibirsk", "노보시비르스크", "OVB", 55.01, 82.94, AS, econ = 22.0, tour = 14.0, slots = 34, fee = 0.60, growth = 1.030),
-        City("tashkent", "타슈켄트", "TAS", 41.31, 69.24, AS, econ = 20.0, tour = 26.0, slots = 32, fee = 0.60, growth = 1.045),
+        City("novosibirsk", "노보시비르스크", "OVB", 55.01, 82.94, AS, standing = 22.0, tour = 14.0, slots = 34, fee = 0.60, growth = 1.030),
+        City("tashkent", "타슈켄트", "TAS", 41.31, 69.24, AS, standing = 20.0, tour = 26.0, slots = 32, fee = 0.60, growth = 1.045),
 
         // --- 중동 ---
-        City("dubai", "두바이", "DXB", 25.20, 55.27, ME, econ = 38.0, tour = 58.0, slots = 70, fee = 0.65, growth = 1.090),
-        City("telaviv", "텔아비브", "TLV", 32.09, 34.78, ME, econ = 32.0, tour = 55.0, slots = 34, fee = 1.10, growth = 1.045),
+        City("dubai", "두바이", "DXB", 25.20, 55.27, ME, standing = 38.0, tour = 58.0, slots = 70, fee = 0.65, growth = 1.090),
+        City("telaviv", "텔아비브", "TLV", 32.09, 34.78, ME, standing = 32.0, tour = 55.0, slots = 34, fee = 1.10, growth = 1.045),
 
         // --- 유럽 ---
-        City("london", "런던", "LON", 51.51, -0.13, EU, econ = 92.0, tour = 90.0, slots = 88, fee = 1.75, growth = 1.028),
-        City("paris", "파리", "PAR", 48.86, 2.35, EU, econ = 84.0, tour = 95.0, slots = 76, fee = 1.50, growth = 1.028),
-        City("frankfurt", "프랑크푸르트", "FRA", 50.11, 8.68, EU, econ = 80.0, tour = 48.0, slots = 76, fee = 1.40, growth = 1.030),
-        City("amsterdam", "암스테르담", "AMS", 52.31, 4.77, EU, econ = 60.0, tour = 66.0, slots = 66, fee = 1.30, growth = 1.030),
-        City("rome", "로마", "ROM", 41.90, 12.50, EU, econ = 54.0, tour = 88.0, slots = 54, fee = 1.20, growth = 1.026),
-        City("madrid", "마드리드", "MAD", 40.42, -3.70, EU, econ = 50.0, tour = 72.0, slots = 56, fee = 1.10, growth = 1.035),
-        City("zurich", "취리히", "ZRH", 47.38, 8.54, EU, econ = 55.0, tour = 56.0, slots = 40, fee = 1.55, growth = 1.028),
+        City("london", "런던", "LON", 51.51, -0.13, EU, standing = 92.0, tour = 90.0, slots = 88, fee = 1.75, growth = 1.028),
+        City("paris", "파리", "PAR", 48.86, 2.35, EU, standing = 84.0, tour = 95.0, slots = 76, fee = 1.50, growth = 1.028),
+        City("frankfurt", "프랑크푸르트", "FRA", 50.11, 8.68, EU, standing = 80.0, tour = 48.0, slots = 76, fee = 1.40, growth = 1.030),
+        City("amsterdam", "암스테르담", "AMS", 52.31, 4.77, EU, standing = 60.0, tour = 66.0, slots = 66, fee = 1.30, growth = 1.030),
+        City("rome", "로마", "ROM", 41.90, 12.50, EU, standing = 54.0, tour = 88.0, slots = 54, fee = 1.20, growth = 1.026),
+        City("madrid", "마드리드", "MAD", 40.42, -3.70, EU, standing = 50.0, tour = 72.0, slots = 56, fee = 1.10, growth = 1.035),
+        City("zurich", "취리히", "ZRH", 47.38, 8.54, EU, standing = 55.0, tour = 56.0, slots = 40, fee = 1.55, growth = 1.028),
         // 제2세계의 정치 수도. 소비 시장은 서방보다 작았지만 국가·군수·행정 통행량이
         // 막대했고, 공항도 셰레메티예보·도모데도보·브누코보로 나뉜 다공항 체제였다.
-        // econ 46 은 상파울루와 같은 칸이라 너무 낮았다.
-        City("moscow", "모스크바", "MOW", 55.76, 37.62, EU, econ = 62.0, tour = 52.0, slots = 64, fee = 0.90, growth = 1.035),
-        City("istanbul", "이스탄불", "IST", 41.01, 28.98, EU, econ = 38.0, tour = 70.0, slots = 52, fee = 0.80, growth = 1.072),
-        City("stockholm", "스톡홀름", "ARN", 59.33, 18.07, EU, econ = 40.0, tour = 48.0, slots = 36, fee = 1.30, growth = 1.030),
+        // 경제 규모만 재던 시절엔 46 으로 상파울루와 같은 칸이었다.
+        City("moscow", "모스크바", "MOW", 55.76, 37.62, EU, standing = 62.0, tour = 52.0, slots = 64, fee = 0.90, growth = 1.035),
+        City("istanbul", "이스탄불", "IST", 41.01, 28.98, EU, standing = 38.0, tour = 70.0, slots = 52, fee = 0.80, growth = 1.072),
+        City("stockholm", "스톡홀름", "ARN", 59.33, 18.07, EU, standing = 40.0, tour = 48.0, slots = 36, fee = 1.30, growth = 1.030),
         // 소련 국내선. 모스크바 한 도시만 두면 그 거대한 국내 수요가 지도에서 통째로
         // 사라지고, 모스크바 기반 항공사는 서유럽 노선밖에 못 연다 — 실제와 정반대다.
         // 상트페테르부르크는 제2도시, 노보시비르스크는 시베리아 관문(모스크바에서
         // 2,800km), 타슈켄트는 중앙아시아 거점이다. 셋 다 관광 지표가 낮은 대신
         // 착륙료가 싸서, 화려하진 않아도 꾸준한 국내 노선망이 된다.
-        City("stpetersburg", "상트페테르부르크", "LED", 59.94, 30.31, EU, econ = 30.0, tour = 54.0, slots = 40, fee = 0.75, growth = 1.032),
+        City("stpetersburg", "상트페테르부르크", "LED", 59.94, 30.31, EU, standing = 30.0, tour = 54.0, slots = 40, fee = 0.75, growth = 1.032),
 
         // --- 북미 ---
-        City("newyork", "뉴욕", "NYC", 40.71, -74.01, NA, econ = 100.0, tour = 88.0, slots = 96, fee = 1.80, growth = 1.028),
-        City("chicago", "시카고", "CHI", 41.88, -87.63, NA, econ = 74.0, tour = 54.0, slots = 86, fee = 1.30, growth = 1.025),
-        City("losangeles", "로스앤젤레스", "LAX", 34.05, -118.24, NA, econ = 82.0, tour = 80.0, slots = 82, fee = 1.40, growth = 1.035),
-        City("sanfrancisco", "샌프란시스코", "SFO", 37.77, -122.42, NA, econ = 64.0, tour = 70.0, slots = 60, fee = 1.40, growth = 1.038),
-        City("dallas", "댈러스", "DFW", 32.78, -96.80, NA, econ = 55.0, tour = 34.0, slots = 72, fee = 1.00, growth = 1.040),
-        City("miami", "마이애미", "MIA", 25.76, -80.19, NA, econ = 48.0, tour = 78.0, slots = 60, fee = 1.20, growth = 1.040),
-        City("toronto", "토론토", "YYZ", 43.65, -79.38, NA, econ = 52.0, tour = 50.0, slots = 56, fee = 1.20, growth = 1.030),
-        City("mexicocity", "멕시코시티", "MEX", 19.43, -99.13, NA, econ = 40.0, tour = 60.0, slots = 50, fee = 0.80, growth = 1.055),
-        City("honolulu", "호놀룰루", "HNL", 21.31, -157.86, NA, econ = 24.0, tour = 92.0, slots = 46, fee = 1.00, growth = 1.035),
+        City("newyork", "뉴욕", "NYC", 40.71, -74.01, NA, standing = 100.0, tour = 88.0, slots = 96, fee = 1.80, growth = 1.028),
+        City("chicago", "시카고", "CHI", 41.88, -87.63, NA, standing = 74.0, tour = 54.0, slots = 86, fee = 1.30, growth = 1.025),
+        City("losangeles", "로스앤젤레스", "LAX", 34.05, -118.24, NA, standing = 82.0, tour = 80.0, slots = 82, fee = 1.40, growth = 1.035),
+        City("sanfrancisco", "샌프란시스코", "SFO", 37.77, -122.42, NA, standing = 64.0, tour = 70.0, slots = 60, fee = 1.40, growth = 1.038),
+        City("dallas", "댈러스", "DFW", 32.78, -96.80, NA, standing = 55.0, tour = 34.0, slots = 72, fee = 1.00, growth = 1.040),
+        City("miami", "마이애미", "MIA", 25.76, -80.19, NA, standing = 48.0, tour = 78.0, slots = 60, fee = 1.20, growth = 1.040),
+        City("toronto", "토론토", "YYZ", 43.65, -79.38, NA, standing = 52.0, tour = 50.0, slots = 56, fee = 1.20, growth = 1.030),
+        City("mexicocity", "멕시코시티", "MEX", 19.43, -99.13, NA, standing = 40.0, tour = 60.0, slots = 50, fee = 0.80, growth = 1.055),
+        City("honolulu", "호놀룰루", "HNL", 21.31, -157.86, NA, standing = 24.0, tour = 92.0, slots = 46, fee = 1.00, growth = 1.035),
 
         // --- 남미 ---
-        City("saopaulo", "상파울루", "GRU", -23.55, -46.63, SA, econ = 45.0, tour = 44.0, slots = 52, fee = 0.90, growth = 1.050),
-        City("buenosaires", "부에노스아이레스", "EZE", -34.60, -58.38, SA, econ = 34.0, tour = 52.0, slots = 44, fee = 0.85, growth = 1.040),
-        City("lima", "리마", "LIM", -12.05, -77.04, SA, econ = 22.0, tour = 48.0, slots = 34, fee = 0.70, growth = 1.050),
+        City("saopaulo", "상파울루", "GRU", -23.55, -46.63, SA, standing = 45.0, tour = 44.0, slots = 52, fee = 0.90, growth = 1.050),
+        City("buenosaires", "부에노스아이레스", "EZE", -34.60, -58.38, SA, standing = 34.0, tour = 52.0, slots = 44, fee = 0.85, growth = 1.040),
+        City("lima", "리마", "LIM", -12.05, -77.04, SA, standing = 22.0, tour = 48.0, slots = 34, fee = 0.70, growth = 1.050),
 
         // --- 아프리카 ---
-        City("cairo", "카이로", "CAI", 30.04, 31.24, AF, econ = 28.0, tour = 76.0, slots = 46, fee = 0.65, growth = 1.050),
-        City("johannesburg", "요하네스버그", "JNB", -26.20, 28.05, AF, econ = 32.0, tour = 46.0, slots = 44, fee = 0.80, growth = 1.045),
-        City("nairobi", "나이로비", "NBO", -1.29, 36.82, AF, econ = 17.0, tour = 62.0, slots = 30, fee = 0.60, growth = 1.060),
-        City("lagos", "라고스", "LOS", 6.52, 3.38, AF, econ = 22.0, tour = 24.0, slots = 34, fee = 0.70, growth = 1.060),
+        City("cairo", "카이로", "CAI", 30.04, 31.24, AF, standing = 28.0, tour = 76.0, slots = 46, fee = 0.65, growth = 1.050),
+        City("johannesburg", "요하네스버그", "JNB", -26.20, 28.05, AF, standing = 32.0, tour = 46.0, slots = 44, fee = 0.80, growth = 1.045),
+        City("nairobi", "나이로비", "NBO", -1.29, 36.82, AF, standing = 17.0, tour = 62.0, slots = 30, fee = 0.60, growth = 1.060),
+        City("lagos", "라고스", "LOS", 6.52, 3.38, AF, standing = 22.0, tour = 24.0, slots = 34, fee = 0.70, growth = 1.060),
 
         // --- 오세아니아 ---
-        City("sydney", "시드니", "SYD", -33.87, 151.21, OC, econ = 55.0, tour = 80.0, slots = 56, fee = 1.25, growth = 1.035),
-        City("auckland", "오클랜드", "AKL", -36.85, 174.76, OC, econ = 25.0, tour = 62.0, slots = 34, fee = 1.10, growth = 1.035),
+        City("sydney", "시드니", "SYD", -33.87, 151.21, OC, standing = 55.0, tour = 80.0, slots = 56, fee = 1.25, growth = 1.035),
+        City("auckland", "오클랜드", "AKL", -36.85, 174.76, OC, standing = 25.0, tour = 62.0, slots = 34, fee = 1.10, growth = 1.035),
     )
 
     private val byId: Map<String, City> = all.associateBy { it.id }

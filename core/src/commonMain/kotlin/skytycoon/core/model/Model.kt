@@ -17,7 +17,17 @@ enum class Region(val label: String, val colorArgb: Long) {
 }
 
 /**
- * @param econ 경제 규모 지수 — 비즈니스 수요를 만든다
+ * @param standing **정치·경제 비중** — 비즈니스 수요를 만든다.
+ *
+ * 순수한 경제 규모가 아니다. 출장 수요는 GDP 만 따라가지 않는다 — 수도에는 정부·
+ * 외교·국영기업·군수 통행이 붙고, 그 나라가 클수록 그 몫이 커진다. 경제 규모만
+ * 재면 제2세계의 수도인 모스크바가 상파울루와 같은 칸에 놓이고(실제로 그랬다),
+ * 베이징이 상하이보다 낮게 잡힌다.
+ *
+ * 그래서 이 값은 **경제 규모 + 정치적 무게**로 읽는다. 뉴욕(100)이 눈금의 위쪽
+ * 끝이고, 수도가 아닌 경제 중심지(프랑크푸르트·상파울루·상하이)는 경제만으로,
+ * 수도는 둘을 합쳐 매긴다.
+ *
  * @param tour 관광 매력 지수 — 레저 수요를 만든다
  * @param slots 주간 총 슬롯. 모든 항공사가 나눠 가지므로 허브일수록 쟁탈전이 벌어진다
  * @param fee 착륙료 지수 (1.0 = 표준)
@@ -30,7 +40,7 @@ data class City(
     val lat: Double,
     val lon: Double,
     val region: Region,
-    val econ: Double,
+    val standing: Double,
     val tour: Double,
     val slots: Int,
     val fee: Double,

@@ -173,7 +173,7 @@ fun WorldMap(
 
         for (city in Cities.all) {
             val p = t.px(city)
-            val weight = (city.econ + city.tour) / 2.0
+            val weight = (city.standing + city.tour) / 2.0
             val radius = (2.6f + (weight / 100.0 * 4.2)).toFloat()
             val mine = state.airlineOrNull(playerId)?.slotsAt(city.id) ?: 0
             val closed = state.cityState[city.id]?.isClosed(state.turn) == true
@@ -194,14 +194,14 @@ fun WorldMap(
         // 라벨은 겹치면 못 읽는다. 중요한 순서로 그리되 자리가 겹치면 건너뛴다.
         val drawn = mutableListOf<Offset>()
         val ranked = Cities.all.sortedByDescending { c ->
-            var score = c.econ
+            var score = c.standing
             if ((state.airlineOrNull(playerId)?.slotsAt(c.id) ?: 0) > 0) score += 120.0
             if (c.id == selectedCity) score += 1000.0
             score
         }
         for (city in ranked) {
             val mine = (state.airlineOrNull(playerId)?.slotsAt(city.id) ?: 0) > 0
-            if (!mine && city.econ < 62 && city.id != selectedCity) continue
+            if (!mine && city.standing < 62 && city.id != selectedCity) continue
             val p = t.px(city)
             if (p.x < -40 || p.y < -20 || p.x > size.width + 40 || p.y > size.height + 20) continue
             if (drawn.any { abs(it.x - p.x) < 40f && abs(it.y - p.y) < 13f }) continue
