@@ -60,6 +60,11 @@ data class AircraftType(
     val crew: Double,
     val turn: Double,
     val prestige: Double,
+    /**
+     * 진영 제한. `"east"` 는 구소련권 기종으로, 냉전기에는 그 진영 항공사만 굴렸다.
+     * 빈 값이면 누구나 산다.
+     */
+    val bloc: String = "",
 )
 
 enum class Trait(val label: String) {

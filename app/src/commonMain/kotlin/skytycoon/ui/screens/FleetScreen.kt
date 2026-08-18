@@ -149,7 +149,14 @@ private fun AircraftMarket(vm: GameViewModel, modifier: Modifier) {
     val s = vm.game
     var usedMode by remember { mutableStateOf(false) }
     // 판이 끝나면 turn 이 totalTurns 라 s.year 는 플레이하지도 않은 다음 해가 된다.
-    val catalog = if (usedMode) AircraftCatalog.usedFor(s.displayYear) else AircraftCatalog.newFor(s.displayYear)
+    // 진영 밖 기재는 애초에 목록에 없다 — 살 수 없는 것을 보여 주고 버튼만 막으면
+    // 왜 못 사는지 모른 채 헤맨다.
+    val home = s.player.home
+    val catalog = if (usedMode) {
+        AircraftCatalog.usedFor(s.displayYear, home)
+    } else {
+        AircraftCatalog.newFor(s.displayYear, home)
+    }
     // 신조기는 인도까지 시간이 걸린다 — 명령과 같은 술어로 물어봐야 버튼이 갈라지지 않는다.
     val inTime = Actions.orderFitsCampaign(s)
 

@@ -50,6 +50,37 @@ object AircraftCatalog {
         AircraftType("b737max10", "B737 MAX 10", "보잉", 2026, 2040, 230, 6110, 840.0, 135e6, 2.7, 400.0, 470.0, 0.62, 8.0),
         AircraftType("b777_9", "B777-9", "보잉", 2027, 2040, 426, 13500, 900.0, 442e6, 7.2, 850.0, 900.0, 1.30, 20.0),
         AircraftType("c929", "C929", "코맥", 2028, 2040, 280, 12000, 900.0, 290e6, 5.8, 720.0, 790.0, 1.20, 10.0),
+
+        // --- 구소련권 ---
+        // 값은 싸지만 기름을 먹고 정비가 잦으며 브랜드값이 안 붙는다. 서방기와 반대쪽
+        // 극단에 두어, 기재값을 아끼는 대신 운항비를 계속 무는 선택지가 되게 했다.
+        // 유가가 오르면 그만큼 더 아프다 (연료 보너스가 있어야 버틸 만하다).
+        AircraftType("tu114", "Tu-114", "투폴레프", 1962, 1976, 170, 8800, 770.0, 16e6, 7.6, 900.0, 680.0, 1.30, 2.0, bloc = "east"),
+        AircraftType("tu134", "Tu-134A", "투폴레프", 1967, 1989, 84, 2900, 850.0, 6.5e6, 3.6, 560.0, 400.0, 0.60, 0.0, bloc = "east"),
+        AircraftType("tu154", "Tu-154B", "투폴레프", 1972, 2005, 164, 3900, 900.0, 12e6, 6.2, 760.0, 540.0, 0.75, 1.0, bloc = "east"),
+        AircraftType("il62", "Il-62M", "일류신", 1974, 1995, 186, 10000, 870.0, 19e6, 8.4, 980.0, 700.0, 1.20, 3.0, bloc = "east"),
+        AircraftType("yak42", "Yak-42", "야코블레프", 1980, 2005, 120, 2900, 810.0, 9e6, 4.0, 600.0, 450.0, 0.60, 1.0, bloc = "east"),
+        // 광동체인데 항속거리가 5,000km 뿐이다 — 실물이 그랬다. 큰 좌석수를 단거리에서만
+        // 쓸 수 있어 "덩치는 큰데 갈 데가 없는" 기종이 된다.
+        AircraftType("il86", "Il-86", "일류신", 1980, 1997, 350, 5000, 900.0, 30e6, 14.5, 1500.0, 1050.0, 1.60, 4.0, bloc = "east"),
+        AircraftType("il96", "Il-96-300", "일류신", 1993, 2015, 262, 11000, 870.0, 75e6, 9.8, 1200.0, 900.0, 1.45, 6.0, bloc = "east"),
+        AircraftType("tu204", "Tu-204-100", "투폴레프", 1996, 2020, 210, 4600, 850.0, 45e6, 4.6, 700.0, 580.0, 0.85, 3.0, bloc = "east"),
+        AircraftType("ssj100", "SSJ100", "수호이", 2011, 2040, 98, 3000, 830.0, 38e6, 2.4, 400.0, 400.0, 0.55, 3.0, bloc = "east"),
+        AircraftType("mc21", "MC-21-300", "이르쿠트", 2025, 2040, 180, 6000, 840.0, 96e6, 2.6, 390.0, 450.0, 0.60, 6.0, bloc = "east"),
+
+        // --- 유럽 군소 제작사 ---
+        // 좌석수가 서방 주력기와 미묘하게 어긋나 있어, 수요가 어중간한 구간을 메우는
+        // 데 쓴다. 대체로 싸고 조용하지만 항속거리가 짧다.
+        AircraftType("caravelle", "카라벨 10B", "쉬드아비아시옹", 1962, 1975, 99, 2500, 800.0, 7e6, 3.6, 540.0, 420.0, 0.60, 1.0),
+        AircraftType("trident", "트라이던트 2E", "호커시들리", 1968, 1985, 115, 3500, 900.0, 11e6, 4.4, 620.0, 480.0, 0.65, 1.0),
+        AircraftType("bac111", "BAC 1-11-500", "BAC", 1968, 1990, 119, 2700, 800.0, 9.5e6, 3.5, 540.0, 430.0, 0.60, 1.0),
+        AircraftType("f28", "포커 F28-4000", "포커", 1969, 1987, 85, 2000, 780.0, 7.5e6, 2.9, 480.0, 400.0, 0.55, 1.0),
+        // 좌석은 727 급인데 항속거리가 2,100km — 실물의 상업적 실패 원인 그대로다.
+        AircraftType("mercure", "다소 메르퀴르", "다소", 1974, 1995, 162, 2100, 900.0, 13e6, 4.5, 630.0, 500.0, 0.70, 1.0),
+        AircraftType("bae146", "BAe 146-300", "브리티시에어로스페이스", 1983, 2002, 112, 2900, 760.0, 28e6, 3.4, 560.0, 460.0, 0.60, 2.0),
+        AircraftType("f100", "포커 100", "포커", 1988, 2000, 109, 3200, 780.0, 32e6, 2.8, 460.0, 420.0, 0.55, 2.0),
+        // 유일한 터보프롭. 느린 대신 기름을 거의 안 먹어, 짧고 얇은 구간에서만 값어치가 있다.
+        AircraftType("atr72", "ATR 72-500", "ATR", 1989, 2040, 74, 1500, 510.0, 22e6, 1.3, 300.0, 300.0, 0.45, 1.0),
     )
 
     private val byId = all.associateBy { it.id }
@@ -57,11 +88,45 @@ object AircraftCatalog {
     operator fun get(id: String): AircraftType = byId.getValue(id)
     fun find(id: String): AircraftType? = byId[id]
 
+    /** 구소련권 기종을 굴리는 진영의 홈 공항. */
+    private val EAST_HOMES = setOf("moscow")
+
+    /**
+     * 냉전이 풀려 양쪽이 서로의 기재를 살 수 있게 되는 해.
+     * 이 해까지는 서방이 소련기를, 동구권이 서방기를 못 산다.
+     */
+    const val IRON_CURTAIN_UNTIL = 1991
+
+    /**
+     * 이 항공사가 이 기종을 굴릴 수 있는가.
+     *
+     * 냉전기에는 양쪽이 서로의 기재를 못 샀다. 이 제약이 없으면 소련기가 값싸다는
+     * 이유만으로 전 세계 항공사에 팔려 나가 — 실제로 넣어 보니 브리타니아와
+     * 리버티까지 Tu-154 를 굴리고 서방 협동체가 통째로 밀려났다 — 진영마다 기재가
+     * 다르다는 시대의 질감이 통째로 사라진다.
+     *
+     * 뒤집힌 제약이기도 하다. 동구권 항공사는 값싸고 기름 먹는 자국기만 굴려야 해서,
+     * 유가가 싼 동안은 물량으로 밀어붙이다가 오일쇼크에 가장 먼저 휘청인다.
+     */
+    fun operableBy(type: AircraftType, homeCityId: String, year: Int): Boolean {
+        val east = homeCityId in EAST_HOMES
+        if (type.bloc == "east") return east
+        return !(east && year <= IRON_CURTAIN_UNTIL)
+    }
+
     /** 해당 연도에 신조기로 발주 가능한 기종. */
     fun newFor(year: Int): List<AircraftType> = all.filter { year >= it.year && year <= it.retire }
 
+    /** 그 항공사가 그 해에 실제로 발주할 수 있는 신조기. */
+    fun newFor(year: Int, homeCityId: String): List<AircraftType> =
+        newFor(year).filter { operableBy(it, homeCityId, year) }
+
     /** 중고 시장 매물 (생산 종료 후 12년까지). */
     fun usedFor(year: Int): List<AircraftType> = all.filter { year > it.year + 2 && year <= it.retire + 12 }
+
+    /** 그 항공사가 그 해에 살 수 있는 중고 매물. */
+    fun usedFor(year: Int, homeCityId: String): List<AircraftType> =
+        usedFor(year).filter { operableBy(it, homeCityId, year) }
 
     /**
      * 기령에 따른 잔존가치 비율 — **연 7%씩** 감가한다.
