@@ -74,7 +74,14 @@ object RivalWatch {
         val ownerBefore = before.routes.associate { it.id to it.airlineId }
         val absorbed = absorbedSomeone(before, after, rivalId, now.values, ownerBefore)
 
-        val opened = now.values.filter { it.id !in ownerBefore }
+        // 진입·철수는 **시장(도시쌍) 단위**로 본다. 같은 분기에 pruneRoutes 가 접은 노선을
+        // openRoutes 가 같은 구간에 다시 열면 id 만 새로 붙는데, id 로 세면 "진입"과 "철수"가
+        // 한 분기에 나란히 뜬다 — 그 회사는 그 시장을 떠난 적이 없다.
+        // 인수로 물려받은 노선은 id 로 걸러낸다 (앞 분기에 남의 것이던 id 다).
+        val pairsBefore = old.values.map { pairKey(it.from, it.to) }.toSet()
+        val opened = now.values
+            .filter { pairKey(it.from, it.to) !in pairsBefore && it.id !in ownerBefore }
+            .distinctBy { pairKey(it.from, it.to) }
         // 안방은 따로 센다. 내가 아직 그 구간에 안 떠 있어도 홈 공항에 들어온 것은 위협이다.
         val atHome = opened.filter { it.touches(home) }
         val onMine = opened.filter { !it.touches(home) && pairKey(it.from, it.to) in myPairs }
@@ -113,10 +120,13 @@ object RivalWatch {
         }
 
         // 병합에 밀려 없어진 id 는 접은 것이 아니다.
+        val pairsNow = now.values.map { pairKey(it.from, it.to) }.toSet()
         val quit = if (absorbed) {
             emptyList()
         } else {
-            old.values.filter { it.id !in now && pairKey(it.from, it.to) in myPairs }
+            old.values
+                .filter { pairKey(it.from, it.to) !in pairsNow && pairKey(it.from, it.to) in myPairs }
+                .distinctBy { pairKey(it.from, it.to) }
         }
         if (quit.isNotEmpty()) {
             out += Signal(

@@ -222,6 +222,29 @@ class RivalWatchTest {
         )
     }
 
+    /**
+     * `pruneRoutes` 가 접은 노선을 같은 분기에 `openRoutes` 가 같은 구간에 다시 열면
+     * id 만 새로 붙는다. id 로 세면 "진입"과 "철수"가 한 분기에 나란히 뜨는데,
+     * 그 회사는 그 시장을 떠난 적이 없다.
+     */
+    @Test
+    fun treatsReopenedMarketAsNoChange() {
+        val before = freshGame()
+        val mine = before.routesOf(before.playerId).first()
+        val rival = before.livingAirlines.first { it.id != before.playerId }
+        val oldRoute = Route(before.routes.maxOf { it.id } + 1, rival.id, mine.from, mine.to, freq = 7)
+        val base = before.copy(routes = before.routes + oldRoute)
+
+        // 접고 같은 구간을 다시 열었다 — id 만 바뀐다.
+        val after = base.copy(
+            routes = base.routes.filter { it.id != oldRoute.id } +
+                Route(base.routes.maxOf { it.id } + 1, rival.id, mine.from, mine.to, freq = 7),
+        )
+
+        val news = RivalWatch.report(base, after)
+        assertEquals(emptyList(), news, "같은 시장을 다시 열었을 뿐인데 소식이 났다: $news")
+    }
+
     /** 한 분기에 쏟아지는 양을 묶어 자른다 — 안 그러면 뉴스 탭이 경쟁사 로그가 된다. */
     @Test
     fun capsPerQuarter() {
