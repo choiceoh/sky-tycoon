@@ -165,6 +165,36 @@ class DebriefTest {
         assertTrue(moneyOnly.first().text.contains("순익"), "금액 줄은 그대로 남아야 한다: $moneyOnly")
     }
 
+    /** 두 분기 연속 같은 일시 비용이면 변한 것이 없다 — 원인으로 뜨면 안 된다. */
+    @Test
+    fun readsOneTimeCostsAsChangeNotLevel() {
+        val steady = quarter(0).copy(extraordinaryCost = 9_000_000.0)
+        val same = quarter(1).copy(extraordinaryCost = 9_000_000.0)
+        val s = stateWith(steady, same)
+        assertTrue(
+            Debrief.lines(s, s.player, same).none { it.text.contains("일시 비용") },
+            "그대로인 일시 비용을 원인으로 댔다",
+        )
+
+        // 반대로 지난 분기의 큰 비용이 사라진 것은 좋아진 이유로 설명돼야 한다.
+        val gone = quarter(2, net = 19_000_000.0)
+        val s2 = stateWith(quarter(1).copy(extraordinaryCost = 9_000_000.0), gone)
+        val lines = Debrief.lines(s2, s2.player, gone)
+        assertTrue(lines.any { it.text.contains("일시 비용이 사라졌") }, "비용이 사라진 것을 설명하지 않았다: $lines")
+    }
+
+    /** 객실·서비스를 손대면 기내 서비스비가 먼저 움직인다 — 후보에서 빠져 있으면 안 된다. */
+    @Test
+    fun considersServiceAndDistributionCosts() {
+        val prev = quarter(0).copy(paxServiceCost = 5_000_000.0)
+        val now = quarter(1, net = -8_000_000.0).copy(paxServiceCost = 23_000_000.0)
+        val s = stateWith(prev, now)
+        assertTrue(
+            Debrief.lines(s, s.player, now).any { it.text.contains("기내 서비스비") },
+            "가장 크게 움직인 비용을 짚지 못했다: ${Debrief.lines(s, s.player, now)}",
+        )
+    }
+
     /** 줄 수 상한을 지킨다. */
     @Test
     fun respectsLimit() {

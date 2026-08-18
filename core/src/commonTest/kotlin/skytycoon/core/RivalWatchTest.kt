@@ -145,6 +145,41 @@ class RivalWatchTest {
         )
     }
 
+    /**
+     * 물려받은 노선이 **원래 있던 노선에 합쳐지는** 경우도 인수로 알아봐야 한다.
+     * `mergeDuplicateRoutes` 가 남의 노선 id 를 버리고 편수만 더하므로, 노선 id 만 보면
+     * 인수를 놓치고 합쳐진 편수가 "증편"으로 나간다. 기재 id 는 그대로 넘어온다.
+     */
+    @Test
+    fun detectsTakeoverEvenWhenInheritedRouteIdsVanish() {
+        val before = freshGame()
+        val mine = before.routesOf(before.playerId).first()
+        val rivals = before.livingAirlines.filter { it.id != before.playerId }
+        val acquirer = rivals[0]
+        val prey = rivals[1]
+
+        // 둘 다 우리 노선과 같은 구간을 이미 날고 있다.
+        val acquirerRoute = Route(before.routes.maxOf { it.id } + 1, acquirer.id, mine.from, mine.to, freq = 7)
+        val preyPlane = before.planesOf(prey.id).firstOrNull() ?: error("먹잇감에 기재가 있어야 한다")
+        val base = before.copy(routes = before.routes + acquirerRoute)
+
+        // 인수 결과: 먹잇감의 노선 id 는 사라지고 인수사 노선의 편수만 14 로 불어난다.
+        // 기재는 id 그대로 인수사에게 넘어간다.
+        val after = base.copy(
+            airlines = base.airlines.map { if (it.id == prey.id) it.copy(alive = false) else it },
+            routes = base.routes
+                .filter { it.airlineId != prey.id }
+                .map { if (it.id == acquirerRoute.id) it.copy(freq = 14) else it },
+            planes = base.planes.map { if (it.id == preyPlane.id) it.copy(airlineId = acquirer.id) else it },
+        )
+
+        val news = RivalWatch.report(base, after)
+        assertTrue(
+            news.none { it.headline.contains("증편") },
+            "인수로 합쳐진 편수를 증편으로 알렸다: $news",
+        )
+    }
+
     /** 한 분기에 쏟아지는 양을 묶어 자른다 — 안 그러면 뉴스 탭이 경쟁사 로그가 된다. */
     @Test
     fun capsPerQuarter() {

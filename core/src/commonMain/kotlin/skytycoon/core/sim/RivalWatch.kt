@@ -68,7 +68,7 @@ object RivalWatch {
         // 시장에 좌석이 늘지도 않았는데 "우리 노선 다섯 곳에 진입" 이 뜬다.
         // 인수 자체는 Stock 이 따로 알린다.
         val ownerBefore = before.routes.associate { it.id to it.airlineId }
-        if (now.values.any { ownerBefore[it.id] != null && ownerBefore[it.id] != rivalId }) return out
+        if (absorbedSomeone(before, after, rivalId, now.values, ownerBefore)) return out
 
         val opened = now.values.filter { it.id !in ownerBefore }
         // 안방은 따로 센다. 내가 아직 그 구간에 안 떠 있어도 홈 공항에 들어온 것은 위협이다.
@@ -179,6 +179,29 @@ object RivalWatch {
             )
         }
         return out
+    }
+
+    /**
+     * 이번 분기에 다른 회사를 삼켰는가.
+     *
+     * 넘겨받은 노선 id 만으로는 모자란다 — 같은 도시쌍을 이미 날고 있었으면
+     * `Stock.mergeDuplicateRoutes` 가 물려받은 id 를 버리고 원래 id 에 편수를 합쳐,
+     * 남의 id 가 하나도 안 남을 수 있다. 그때는 합쳐진 편수가 "증편"으로 읽힌다.
+     * 기재 id 는 병합되지 않고 그대로 주인만 바뀌므로 그쪽이 확실한 신호다
+     * (기재는 회사 사이에 사고팔 수 없어, 주인이 바뀌었다면 인수뿐이다).
+     *
+     * 인수한 회사의 지분으로는 판별할 수 없다 — 합병이 `holdings` 에서 그 회사를 지운다.
+     */
+    private fun absorbedSomeone(
+        before: GameState,
+        after: GameState,
+        rivalId: String,
+        nowRoutes: Collection<Route>,
+        ownerBefore: Map<Int, String>,
+    ): Boolean {
+        if (nowRoutes.any { ownerBefore[it.id]?.let { was -> was != rivalId } == true }) return true
+        val planeOwnerBefore = before.planes.associate { it.id to it.airlineId }
+        return after.planesOf(rivalId).any { planeOwnerBefore[it.id]?.let { was -> was != rivalId } == true }
     }
 
     // ------------------------------------------------------------------ 표현

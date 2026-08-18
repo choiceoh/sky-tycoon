@@ -177,6 +177,10 @@ object Debrief {
             "광고비" to current.adSpend - previous.adSpend,
             "본사 간접비" to current.overhead - previous.overhead,
             "감가상각" to current.depreciation - previous.depreciation,
+            // 객실·서비스 등급을 손대면 여기가 먼저 움직인다. 빼 두면 순익이 왜 깎였는지
+            // 가장 큰 원인이 통째로 빠진 채 해설이 나간다.
+            "기내 서비스비" to current.paxServiceCost - previous.paxServiceCost,
+            "판매·유통비" to current.distributionCost - previous.distributionCost,
         ).maxByOrNull { abs(it.second) }
         if (others != null && abs(others.second) >= floor) {
             out += Cause(
@@ -190,14 +194,23 @@ object Debrief {
             out += Cause(abs(side), DebriefLine("부대사업 수입 {}", tone(side), amount = side, signed = true))
         }
 
-        if (current.extraordinaryCost > 0) {
+        // 일시 비용도 **증감**으로 잰다. 절대액을 그대로 올리면 두 분기 연속 같은 합의금이
+        // 나갔을 때 변한 것이 없는데도 원인으로 뜨고, 반대로 지난 분기의 큰 비용이 사라져
+        // 순익이 좋아진 것은 아무도 설명하지 않는다.
+        val extra = current.extraordinaryCost - previous.extraordinaryCost
+        if (abs(extra) >= floor) {
             out += Cause(
-                current.extraordinaryCost,
-                DebriefLine(
-                    "파업 합의금 등 일시 비용 {} 가 이번 분기에만 나갔습니다.",
-                    DebriefTone.BAD,
-                    amount = current.extraordinaryCost,
-                ),
+                abs(extra),
+                if (extra > 0) {
+                    DebriefLine("파업 합의금 등 일시 비용 {}", DebriefTone.BAD, amount = extra, signed = true)
+                } else {
+                    DebriefLine(
+                        "지난 분기의 일시 비용이 사라졌습니다 ({})",
+                        DebriefTone.GOOD,
+                        amount = -extra,
+                        signed = true,
+                    )
+                },
             )
         }
         return out
