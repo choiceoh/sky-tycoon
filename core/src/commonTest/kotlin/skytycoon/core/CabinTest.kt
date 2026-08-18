@@ -227,4 +227,52 @@ class CabinTest {
         )
         assertTrue(posh > plain, "대접이 좋아도 최적 객실 크기가 그대로다 ($posh vs $plain)")
     }
+
+    /**
+     * 화면과 AI 가 쓰는 노선별 프리미엄 비율은 **시장 계산과 같은 값**이어야 한다.
+     *
+     * 노선에 따로 태운 서비스([Route.serviceExtra])를 안 세면, 서비스를 얹어 둔 노선에서
+     * 실제보다 낮은 비율이 나와 화면이 플레이어를 속이고 AI 가 객실을 작게 깐다.
+     */
+    @Test
+    fun `노선별 프리미엄 비율은 그 노선에 태운 서비스까지 센다`() {
+        val s = NewGame.create(seed = 7)
+        val airline = s.airline("hanseong")
+        // 앞자리가 남아도는 구간이라야 비율 차이가 판매 차이로 드러난다. 좌석이 먼저
+        // 동나는 노선에서 재면 양쪽 다 만석이라 아무것도 못 잡는다.
+        val plain = Route(1, "hanseong", "london", "paris")
+        val boosted = plain.copy(serviceExtra = 2)
+        val a = Market.premiumTakeup(airline, plain)
+        val b = Market.premiumTakeup(airline, boosted)
+        println("[노선 서비스] 기본 ${(a * 1000).toInt() / 10.0}% · +2등급 ${(b * 1000).toInt() / 10.0}%")
+        assertTrue(b > a, "노선에 서비스를 얹었는데 프리미엄 비율이 그대로다 ($b vs $a)")
+
+        // 시장이 실제로 쓰는 값과 어긋나면 안 된다 — 같은 노선을 태워 앞자리 판매를 비교한다.
+        val cabin = Balance.BIZ_SHARE_MAX
+        val soldPlain = sell(s, plain, cabin)
+        val soldBoost = sell(s, boosted, cabin)
+        println("[노선 서비스] 앞자리 판매 기본 ${soldPlain.toInt()} · +2등급 ${soldBoost.toInt()}")
+        assertTrue(soldBoost > soldPlain, "서비스를 얹은 노선이 앞자리를 더 못 판다")
+    }
+
+    /** [route] 를 한성항공 이름으로 띄워 앞자리 판매 인원을 잰다. */
+    private fun sell(base: GameState, route: Route, share: Double): Double {
+        val dist = Geo.distance(route.from, route.to)
+        val pid = base.nextId
+        val cap = Economics.capacity(listOf(Plane(pid, "b727", "hanseong", 8)), dist)
+        val r = route.copy(id = pid + 1, freq = 14.coerceAtMost(cap.maxFreq), planeIds = listOf(pid))
+        val s = base.copy(
+            planes = listOf(Plane(pid, "b727", "hanseong", 8, routeId = r.id)),
+            routes = listOf(r),
+            nextId = r.id + 1,
+            airlines = base.airlines.map { a ->
+                if (a.id == "hanseong") {
+                    a.copy(slots = a.slots + (route.from to 40) + (route.to to 40), bizShare = share)
+                } else {
+                    a
+                }
+            },
+        )
+        return Market.resolvePair(s, Cities[route.from], Cities[route.to], s.routes).first().bizCabinPax
+    }
 }

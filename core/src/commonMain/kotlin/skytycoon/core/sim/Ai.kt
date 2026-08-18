@@ -489,7 +489,7 @@ object Ai {
         // 좋은 회사는 같은 객실을 더 채우므로 더 크게 깔아도 남는다 — 이걸 안 보면
         // 대접에 투자한 회사가 그 값을 못 받고, 아홉 회사가 다 같은 크기로 수렴한다.
         val appeal = routes
-            .map { Market.premiumTakeup(a, Cities[it.from], Cities[it.to]) }
+            .map { Market.premiumTakeup(a, it) }
             .average() / Balance.BIZ_CABIN_TAKEUP
         // 출장 비중이 절반이면 바닥의 20% 안팎이 최적이었다 (CabinProbe 참고).
         val want = (bizShare * 0.38 * trait * appeal).coerceIn(0.0, Balance.BIZ_SHARE_MAX)

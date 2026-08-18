@@ -328,13 +328,23 @@ object Market {
      * 두 곳에서 같은 축을 세게 걸면 좋은 회사가 손님도 더 받고 단가도 더 받아
      * 격차가 제곱으로 벌어진다.
      */
-    fun premiumTakeup(airline: Airline, a: City, b: City): Double = premiumTakeup(
-        brand = (airline.brandIn(a.region) + airline.brandIn(b.region)) / 2.0,
-        service = airline.serviceLevel.toDouble(),
-        facilityAppeal = airline.businesses
-            .filter { it.city == a.id || it.city == b.id }
-            .sumOf { it.type.premiumAppeal },
-    )
+    /**
+     * 노선 하나의 프리미엄 비율. **노선에 따로 태운 서비스**([Route.serviceExtra])까지 센다 —
+     * 시장 계산이 보는 것과 같은 값이어야 하므로 도시쌍이 아니라 노선을 받는다.
+     * 회사 등급만 보면 서비스를 얹어 둔 노선을 몇 %p 씩 낮게 잡아, 화면과 AI 가
+     * 실제보다 작은 객실을 답으로 낸다.
+     */
+    fun premiumTakeup(airline: Airline, route: Route): Double {
+        val a = Cities[route.from]
+        val b = Cities[route.to]
+        return premiumTakeup(
+            brand = (airline.brandIn(a.region) + airline.brandIn(b.region)) / 2.0,
+            service = (airline.serviceLevel + route.serviceExtra).toDouble(),
+            facilityAppeal = airline.businesses
+                .filter { it.city == route.from || it.city == route.to }
+                .sumOf { it.type.premiumAppeal },
+        )
+    }
 
     fun premiumTakeup(brand: Double, service: Double, facilityAppeal: Double): Double {
         val appeal = Balance.PREMIUM_SERVICE_W * (service - Balance.PREMIUM_SERVICE_REF) +
