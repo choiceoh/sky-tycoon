@@ -24,9 +24,18 @@ data class RouteOutcome(
     val fare: Double,
     val localRevenue: Double,
     val share: Double,
-    /** 그중 비즈니스 **객실**에 앉은 승객. 기내식·라운지 원가가 더 붙는다. */
+    /**
+     * 그중 **비즈니스 운임을 낸** 승객 (분기 인원).
+     *
+     * "앞자리에 앉을 수 있었던 사람"이 아니라 실제로 프리미엄 값을 치른 쪽이다 —
+     * 출장 수요 중 [Balance.BIZ_CABIN_TAKEUP] 만큼만 그렇고, 객실 좌석 수로 한 번 더
+     * 잘린다. 기내식·라운지 원가가 이 인원에 붙는다.
+     */
     val bizCabinPax: Double = 0.0,
-    /** 깔아 놓은 비즈니스 좌석. 비어 있어도 유지비가 나간다. */
+    /**
+     * 깔아 놓은 비즈니스 좌석 — **분기 공급 좌석**(편도 편수 × 좌석)이지 기체의 물리
+     * 좌석 수가 아니다. 비어 있어도 유지비가 나간다.
+     */
     val bizSeatsOffered: Double = 0.0,
     val connectPax: Double = 0.0,
     val connectRevenue: Double = 0.0,
@@ -50,6 +59,7 @@ data class RouteOutcome(
 private class Offer(
     val route: Route,
     val fare: Double,
+    /** 분기 공급 좌석 기준 (물리 좌석 수가 아니다). */
     val bizSeats: Double,
     val econSeats: Double,
     val bizUtil: Double,
@@ -62,12 +72,14 @@ private class Offer(
     var lei: Double = 0.0
 
     /**
-     * 앞자리에 앉은 출장객.
+     * **비즈니스 운임을 낸** 출장객.
      *
      * 출장 수요 전체가 앞자리 값을 내지는 않는다 ([Balance.BIZ_CABIN_TAKEUP]) —
      * 프리미엄 수요보다 객실을 크게 깔면 그만큼 빈 채로 난다.
      */
     val bizInCabin: Double get() = minOf(biz * Balance.BIZ_CABIN_TAKEUP, bizSeats)
+
+    /** 나머지 출장객 — 이코노미 좌석에 앉아 [Balance.BIZ_YIELD] 만 낸다. */
     val bizInEcon: Double get() = biz - bizInCabin
 }
 

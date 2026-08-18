@@ -143,10 +143,11 @@ fun ManageScreen(vm: GameViewModel, wide: Boolean) {
             )
             VSpace(8)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (pct in listOf(0, 10, 20, 30)) {
-                    val v = pct / 100.0
+                // 마지막 칸은 상한에서 끌어온다 — 상수를 올렸는데 프리셋이 안 따라가면
+                // 플레이어가 최대치를 아예 고를 수 없다.
+                for (v in listOf(0.0, 0.10, 0.20, Balance.BIZ_SHARE_MAX)) {
                     Chip(
-                        "$pct%",
+                        "${(v * 100).toInt()}%",
                         selected = kotlin.math.abs(share - v) < 0.005,
                         accent = Amber,
                         onClick = { vm.run(Command.SetCabin(player.id, v)) },
