@@ -158,8 +158,8 @@ object Balance {
      * 현실의 운임도 같은 이유로 단거리 km 당 단가가 훨씬 비싸다. 고정 몫을 키우고
      * km 단가를 낮춰, 장거리 운임은 그대로 두면서 단거리만 제 원가를 싣게 했다.
      */
-    const val FARE_BASE = 30.0
-    const val FARE_PER_KM = 0.030
+    const val FARE_BASE = 40.0
+    const val FARE_PER_KM = 0.0275
     const val FARE_DIST_EXP = 1.02
     /** 비즈니스/퍼스트가 섞여 생기는 수익 가산 (이코노미 좌석에 앉은 출장객) */
     const val BIZ_YIELD = 1.90
@@ -280,13 +280,31 @@ object Balance {
     const val NAV_PER_KM = 0.030
     const val PAX_SERVICE_BASE = 5.5
     const val PAX_SERVICE_PER_LEVEL = 2.2
-    const val DISTRIBUTION_RATE = 0.13
+    const val DISTRIBUTION_RATE = 0.18
+    /**
+     * 기재 한 대를 굴리는 데 드는 본사·지상 조직 비용 (분기).
+     *
+     * 회사 마진을 깎으려고 이 값을 올려 봤지만 **단거리가 먼저 죽는다**. 기재당
+     * 고정비라, 대당 매출이 작은 단거리 노선이 같은 금액을 나눠 지기 때문이다
+     * (55만 달러로 올렸더니 런던–파리가 어떤 편수에서도 마진 -5%). 회사 수익성을
+     * 낮추려면 거리대를 가리지 않는 손잡이를 써야 한다 — MoneyProbe 주석 참고.
+     */
     const val OVERHEAD_PER_AIRCRAFT = 120_000.0
     const val OVERHEAD_PER_ROUTE = 18_000.0
     const val OVERHEAD_FIXED = 1.6e6
     const val DEPRECIATION_QUARTERS = 60.0
+
+    /**
+     * 기재 카탈로그 가격에 곱하는 배수.
+     *
+     * 카탈로그 값은 실제 시대별 명목가지만, 이 게임의 압축된 수요 규모에 견주면
+     * 너무 쌌다 — 한 대가 제 값을 **1.8~2.9년** 만에 뽑았다. 기재가 그 정도로 싸면
+     * 기단 구성이 판단거리가 아니라 현금이 모이는 대로 누르는 버튼이 된다.
+     * 회수 기간을 4~6년으로 늘려 발주 하나가 무게를 갖게 한다 (MoneyProbe 참고).
+     */
+    const val AIRCRAFT_PRICE_MUL = 2.0
     const val CARGO_RATE = 0.13
-    const val TAX_RATE = 0.30
+    const val TAX_RATE = 0.40
     /** 기령 1분기마다 정비비가 이만큼씩 붙는다 */
     const val AGE_MAINT_PER_QUARTER = 0.012
 

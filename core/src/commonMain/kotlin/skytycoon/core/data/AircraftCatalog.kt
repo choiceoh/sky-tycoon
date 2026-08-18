@@ -1,6 +1,7 @@
 package skytycoon.core.data
 
 import skytycoon.core.model.AircraftType
+import skytycoon.core.sim.Balance
 import kotlin.math.pow
 
 object AircraftCatalog {
@@ -81,7 +82,7 @@ object AircraftCatalog {
         AircraftType("f100", "포커 100", "포커", 1988, 2000, 109, 3200, 780.0, 32e6, 2.8, 460.0, 420.0, 0.55, 2.0),
         // 유일한 터보프롭. 느린 대신 기름을 거의 안 먹어, 짧고 얇은 구간에서만 값어치가 있다.
         AircraftType("atr72", "ATR 72-500", "ATR", 1989, 2040, 74, 1500, 510.0, 22e6, 1.3, 300.0, 300.0, 0.45, 1.0),
-    )
+    ).map { it.copy(price = it.price * Balance.AIRCRAFT_PRICE_MUL) }
 
     private val byId = all.associateBy { it.id }
 
