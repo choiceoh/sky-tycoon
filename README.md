@@ -14,6 +14,17 @@
 — `main` 이 갱신될 때마다 CI 가 다시 올리므로 링크는 그대로다.
 설치하려면 안드로이드에서 "알 수 없는 출처의 앱 설치"를 허용해야 한다 (디버그 서명이라 스토어 배포용은 아니다).
 
+### "앱이 설치되지 않음" 이 뜬다면
+
+1. **예전 빌드가 깔려 있는 경우 — 지우고 다시 받는다.** 2026-08-18 이전 nightly 는
+   빌드마다 서명 키가 달랐다(레포에 디버그 키스토어가 없어 CI 가 매번 새로 만들었다).
+   안드로이드는 서명이 다른 APK 를 기존 앱 위에 덮어 깔지 못하고 이 메시지만 띄운다.
+   한 번만 지우면 되고, 그 이후 빌드끼리는 그냥 덮어 설치된다. 지우면 세이브도 함께 사라진다.
+2. **"알 수 없는 출처" 허용** — 브라우저·파일 관리자 등 APK 를 여는 그 앱에 권한이 붙는다.
+3. **Play 프로텍트** — "알 수 없는 개발자" 경고에서 그냥 설치를 눌러야 한다.
+4. **안드로이드 8.0(API 26) 이상**이어야 한다. 그 아래는 설치가 되지 않는다.
+5. 위가 다 아니면 받다 만 파일일 수 있다. 다시 받아본다 (정상 파일은 16MB 남짓이다).
+
 ## 모듈
 
 | 모듈 | 내용 |
@@ -38,6 +49,14 @@ SDK 가 없는 환경(CI 컨테이너 등)에서도 `core` 와 `app`(데스크�
 ```bash
 ./gradlew :android:assembleDebug     # APK
 ./gradlew :android:installDebug      # 연결된 기기에 설치
+```
+
+APK 는 `~/.android/debug.keystore` 가 아니라 레포에 있는 `android/debug.keystore` 로 서명된다.
+그래야 어느 머신에서 빌드하든, CI 가 올린 nightly 든 서명이 같아 폰에서 서로 덮어 설치된다
+(디버그 전용 키다 — 스토어 배포에는 쓰지 않는다). `tools/verify_apk_signer.py` 로 확인할 수 있다:
+
+```bash
+python3 tools/verify_apk_signer.py android/build/outputs/apk/debug/android-debug.apk
 ```
 
 ## 게임 규칙 요약
@@ -183,5 +202,10 @@ SDK 가 없는 환경(CI 컨테이너 등)에서도 `core` 와 `app`(데스크�
    러너에 SDK 가 있어 `settings.gradle.kts` 가 `:android` 를 빌드에 넣는다.
    이 스텝이 없으면 `MainActivity`·매니페스트·안드로이드 세이브 구현이 한 번도 컴파일되지 않은 채
    그린 체크로 머지될 수 있다.
+4. `tools/verify_apk_signer.py` — 조립된 APK 의 서명 인증서가 `android/debug.keystore` 것인지 대조한다.
+   키가 어긋나도 빌드는 초록불로 끝나고 APK 도 멀쩡해 보인다 — 폰에 덮어 설치할 때야
+   "앱이 설치되지 않음" 으로 드러나므로, 배포 전에 여기서 잡는다.
 
 `main` 푸시에서는 만들어진 APK 를 `nightly` 릴리스에 갈아 끼운다 (위 다운로드 링크가 그것).
+`versionCode` 는 CI 실행 번호(`SKY_TYCOON_BUILD_NUMBER`)로 매 빌드 올라가고,
+`versionName` 에 커밋 해시가 붙어 폰의 앱 정보에서 어느 빌드인지 확인할 수 있다.
