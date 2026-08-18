@@ -88,6 +88,12 @@ enum class Trait(val label: String) {
     BALANCED("균형"),
 }
 
+/**
+ * @param premiumAppeal 그 도시를 드나드는 손님 중 **앞자리 값을 낼 사람**을 얼마나 늘리는가.
+ *   [demandBoost] 가 "손님이 더 온다"라면 이쪽은 "같은 손님이 더 비싼 자리를 산다"다.
+ *   라운지가 기준점(1.0)이다 — 프리미엄 객실을 파는 시설 그 자체다. 여행사는 값을
+ *   깎아 파는 창구라 0 이고, 정비창은 손님이 볼 일이 없다.
+ */
 enum class BusinessType(
     val label: String,
     val cost: Double,
@@ -95,12 +101,13 @@ enum class BusinessType(
     val demandBoost: Double,
     val brandBoost: Double,
     val maintDiscount: Double,
+    val premiumAppeal: Double = 0.0,
 ) {
-    HOTEL("호텔", 48e6, 2.9e6, 0.05, 3.0, 0.0),
-    DUTY_FREE("면세점", 30e6, 2.2e6, 0.02, 2.0, 0.0),
+    HOTEL("호텔", 48e6, 2.9e6, 0.05, 3.0, 0.0, premiumAppeal = 0.6),
+    DUTY_FREE("면세점", 30e6, 2.2e6, 0.02, 2.0, 0.0, premiumAppeal = 0.2),
     AGENCY("여행사", 22e6, 1.2e6, 0.06, 1.0, 0.0),
     HANGAR("정비창", 65e6, 0.0, 0.0, 0.0, 0.12),
-    LOUNGE("라운지", 18e6, 0.5e6, 0.03, 4.0, 0.0),
+    LOUNGE("라운지", 18e6, 0.5e6, 0.03, 4.0, 0.0, premiumAppeal = 1.0),
 }
 
 data class Scenario(
@@ -375,6 +382,15 @@ data class Airline(
     val adBudget: Map<Region, Double> = emptyMap(),
     val alive: Boolean = true,
     val mergedInto: String? = null,
+    /**
+     * 바닥 면적 중 **비즈니스 객실**에 내주는 비율 (0.0 ~ [skytycoon.core.sim.Balance.BIZ_SHARE_MAX]).
+     *
+     * 좌석 수와 단가의 맞바꿈이다. 비즈니스 한 자리가 이코노미
+     * [skytycoon.core.sim.Balance.BIZ_SEAT_SPACE] 석의 바닥을 쓰므로 총 좌석은 줄고,
+     * 대신 앞자리 손님은 훨씬 비싸게 낸다. 출장 수요가 두터운 장거리에서는 남고,
+     * 관광 위주 단거리에서는 줄어든 좌석만큼 손해다.
+     */
+    val bizShare: Double = 0.0,
     val bonusKey: String = "",
     val bonusLabel: String = "",
     /** 안전·신뢰도 0..1. 사고가 나면 떨어지고 서서히 회복된다 */

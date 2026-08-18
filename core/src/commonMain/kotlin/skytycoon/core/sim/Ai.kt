@@ -49,6 +49,7 @@ object Ai {
         s = expandAirports(s, airlineId, skill)
         s = openRoutes(s, airlineId, rng, skill)
         s = finance(s, airlineId)
+        s = tuneCabin(s, airlineId)
         s = marketing(s, airlineId, skill)
         s = sideBusiness(s, airlineId, rng)
         // 노선을 다 벌인 **뒤에** 남는 슬롯을 정리한다. 앞에 두면 확장으로 막 받은
@@ -450,7 +451,11 @@ object Ai {
             .sumOf { r ->
                 val planes = state.planes.filter { it.routeId == r.id }
                 val cap = Economics.capacity(planes, Geo.distance(a.id, b.id))
-                Economics.quarterlySeats(r.freq.coerceAtMost(cap.maxFreq), cap.avgSeats)
+                val seats = Economics.quarterlySeats(r.freq.coerceAtMost(cap.maxFreq), cap.avgSeats)
+                // 앞자리를 깐 경쟁자는 실제로 내놓는 좌석이 그만큼 적다. 이코노미 기준으로
+                // 세면 그런 시장을 과대평가된 경쟁으로 읽어 멀쩡한 노선을 피한다.
+                val rival = state.airlineOrNull(r.airlineId)
+                if (rival == null) seats else Economics.cabin(seats, rival.bizShare).total
             }
         val airline = state.airline(airlineId)
         val homeBonus = if (a.id == airline.home || b.id == airline.home) 1.35 else 1.0
@@ -460,6 +465,39 @@ object Ai {
         // 이게 없으면 AI 는 편차를 못 읽고 하필 빡센 시장만 골라 들어간다.
         val local = exp(Market.localStrength(a, b))
         return demand / (1.0 + rivalSeats / 1000.0) / (1.0 + local) * homeBonus * brandBonus
+    }
+
+    /**
+     * 비즈니스 객실 비중을 노선망의 **출장 수요 비중**에 맞춘다.
+     *
+     * 객실은 공짜가 아니다 — 깔아 놓은 좌석만큼 유지비가 나가고 바닥도 잡아먹으므로,
+     * 프리미엄 수요보다 크게 깔면 빈 채로 날며 손해다. 그래서 내가 실제로 나는 구간의
+     * 출장 비중을 보고 정한다. 성향은 그 위에 얹는다 (프리미엄은 더, 저가는 덜).
+     */
+    private fun tuneCabin(state: GameState, airlineId: String): GameState {
+        val routes = state.routesOf(airlineId).filter { it.active }
+        if (routes.isEmpty()) return state
+        val bizShare = routes
+            .map { Demand.annualBase(Cities[it.from], Cities[it.to]) }
+            .let { ds ->
+                val total = ds.sumOf { it.total }
+                if (total <= 0.0) 0.0 else ds.sumOf { it.business } / total
+            }
+        val a = state.airline(airlineId)
+        val trait = when (a.trait) {
+            Trait.PREMIUM -> 1.25
+            Trait.VALUE -> 0.55
+            else -> 1.0
+        }
+        // 앞자리를 실제로 팔아낼 수 있는 만큼만 깐다. 서비스 등급·브랜드·부대시설이
+        // 좋은 회사는 같은 객실을 더 채우므로 더 크게 깔아도 남는다 — 이걸 안 보면
+        // 대접에 투자한 회사가 그 값을 못 받고, 아홉 회사가 다 같은 크기로 수렴한다.
+        val appeal = Market.networkPremiumTakeup(a, routes) / Balance.BIZ_CABIN_TAKEUP
+        // 출장 비중이 절반이면 바닥의 20% 안팎이 최적이었다 (CabinProbe 참고).
+        val want = (bizShare * 0.38 * trait * appeal).coerceIn(0.0, Balance.BIZ_SHARE_MAX)
+        val now = a.bizShare
+        if (kotlin.math.abs(want - now) < 0.02) return state
+        return cmd(state, Command.SetCabin(airlineId, want))
     }
 
     // ------------------------------------------------------------- 재무·마케팅·부대사업
@@ -517,7 +555,15 @@ object Ai {
             t != BusinessType.HANGAR || a.businesses.none { it.type == BusinessType.HANGAR }
         }
         if (candidates.isEmpty()) return s
-        val type = rng.pick(candidates)
+        // 프리미엄 성향은 앞자리를 파는 시설(라운지·호텔)에 무게를 둔다. 무작위로만
+        // 고르면 성향이 부대사업에 드러나지 않아, 고급 노선을 표방하는 회사가 여행사만
+        // 잔뜩 짓고 정작 프리미엄 매력은 평범한 일이 생긴다.
+        val type = if (a.trait == Trait.PREMIUM) {
+            val posh = candidates.filter { it.premiumAppeal > 0.0 }
+            rng.pick(posh.ifEmpty { candidates })
+        } else {
+            rng.pick(candidates)
+        }
         val city = served
             .filter { c -> a.businesses.none { it.type == type && it.city == c } }
             .maxByOrNull { a.slotsAt(it) } ?: return s
