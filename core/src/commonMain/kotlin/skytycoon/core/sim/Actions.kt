@@ -509,6 +509,16 @@ object Actions {
     private fun buyAircraft(state: GameState, airline: Airline, cmd: Command.BuyAircraft): ActionResult {
         if (cmd.count < 1) return ActionResult.fail(state, "1대 이상 발주해야 합니다.")
         val type = AircraftCatalog.find(cmd.typeId) ?: return ActionResult.fail(state, "알 수 없는 기종입니다.")
+        if (!AircraftCatalog.operableBy(type, airline.home, state.year)) {
+            return ActionResult.fail(
+                state,
+                if (type.bloc == "east") {
+                    "${type.name}은 구소련권 항공사만 도입할 수 있습니다."
+                } else {
+                    "${AircraftCatalog.IRON_CURTAIN_UNTIL}년까지는 서방 기재를 도입할 수 없습니다."
+                },
+            )
+        }
 
         if (cmd.used) {
             if (state.year <= type.year + 2) return ActionResult.fail(state, "${type.name}은 아직 중고 매물이 없습니다.")

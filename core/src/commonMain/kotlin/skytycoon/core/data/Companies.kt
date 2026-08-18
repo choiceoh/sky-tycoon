@@ -81,6 +81,21 @@ object Companies {
             bonusKey = "finance", bonusLabel = "원자재 재벌의 뒷돈",
             bonusDesc = "차입 한도가 40% 크고 이자율이 1%p 낮다.",
         ),
+        // 모스크바 국적사. 냉전이 풀릴 때까지 서방기를 못 사는 대신, 값싸고 기름 먹는
+        // 자국기를 물량으로 굴린다. 기재값이 싸서 초반 확장이 빠르고, 대신 운항비와
+        // 유가에 계속 노출된다.
+        CompanySeed(
+            id = "soyuz", name = "소유즈항공", short = "SY", colorArgb = 0xFFB0543F,
+            home = "moscow", trait = Trait.EXPAND, cash = 360e6, shares = 48e6,
+            startFleet = listOf("tu134" to 6, "tu114" to 2),
+            // 국내선이 뼈대다 — 서방 취항은 상징적인 몇 편뿐이었다.
+            startSlots = mapOf(
+                "moscow" to 28, "stpetersburg" to 8, "novosibirsk" to 5, "tashkent" to 5,
+                "beijing" to 4, "london" to 3,
+            ),
+            bonusKey = "fuel", bonusLabel = "국가 배급 연료",
+            bonusDesc = "연료비를 6% 절감한다. 기름 먹는 자국기를 굴리려면 이게 있어야 한다.",
+        ),
         CompanySeed(
             id = "southerncross", name = "서던크로스", short = "SX", colorArgb = 0xFF7FA8E8,
             home = "sydney", trait = Trait.BALANCED, cash = 400e6, shares = 52e6,

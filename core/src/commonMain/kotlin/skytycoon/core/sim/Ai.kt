@@ -225,7 +225,7 @@ object Ai {
             // 없으면 발주한다.
             val airline = s.airline(airlineId)
             val reserve = Balance.AI_CASH_FLOOR * s.world.inflation
-            val bigger = AircraftCatalog.newFor(s.year)
+            val bigger = AircraftCatalog.newFor(s.year, s.airline(airlineId).home)
                 .filter { Economics.canFly(it, dist) && it.seats > smallestSeats * 1.25 }
                 .filter { it.price < (airline.cash - reserve) * 0.5 * skill }
                 .maxByOrNull { it.seats } ?: continue
@@ -244,7 +244,8 @@ object Ai {
         } else {
             routes.sumOf { Geo.distance(it.from, it.to) } / routes.size
         }
-        val candidates = AircraftCatalog.newFor(state.year).filter { Economics.canFly(it, typicalDist) }
+        val candidates = AircraftCatalog.newFor(state.year, airline.home)
+            .filter { Economics.canFly(it, typicalDist) }
         if (candidates.isEmpty()) return null
         return when (airline.trait) {
             Trait.PREMIUM -> candidates.maxByOrNull { it.prestige + it.seats / 200.0 }
@@ -281,7 +282,7 @@ object Ai {
             s = cmd(s, Command.BuyAircraft(airlineId, type.id, want.coerceAtMost(Balance.AI_MAX_ORDERS)))
         } else if (affordable < 1 && rng.chance(0.3 * skill)) {
             // 신조기가 부담되면 중고를 노린다.
-            val used = AircraftCatalog.usedFor(s.year)
+            val used = AircraftCatalog.usedFor(s.year, s.airline(airlineId).home)
                 .filter { Economics.canFly(it, 2000.0) }
                 .minByOrNull { it.price }
             if (used != null) s = cmd(s, Command.BuyAircraft(airlineId, used.id, 1, used = true))

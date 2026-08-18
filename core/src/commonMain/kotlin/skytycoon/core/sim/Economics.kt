@@ -191,7 +191,7 @@ object Economics {
         val airline = state.airlineOrNull(airlineId)
         val homeDiscount = if (airline?.home == cityId) Balance.SLOT_HOME_DISCOUNT else 1.0
         val negotiator = if (airline?.bonusKey == "slot") 0.8 else 1.0
-        val sizeFactor = (city.econ + city.tour) / 100.0
+        val sizeFactor = (city.standing + city.tour) / 100.0
         return Balance.SLOT_BASE_PRICE *
             sizeFactor *
             (1.0 + scarcity.pow(Balance.SLOT_SCARCITY_EXP) * 6.0) *
@@ -215,7 +215,7 @@ object Economics {
      */
     fun slotRent(state: GameState, airlineId: String, cityId: String): Double {
         val city = Cities[cityId]
-        val sizeFactor = (city.econ + city.tour) / 100.0
+        val sizeFactor = (city.standing + city.tour) / 100.0
         val home = if (state.airlineOrNull(airlineId)?.home == cityId) Balance.SLOT_HOME_DISCOUNT else 1.0
         // 난이도 배수를 여기서 곱한다. 결산에서만 곱하면 화면에 뜨는 임차료와 실제
         // 청구액이 달라져, 플레이어가 잘못된 값으로 슬롯을 잡거나 반납한다.
@@ -236,7 +236,7 @@ object Economics {
         // 슬롯은 이제 **임차**라 자산이 아니다. 취득 수수료만큼의 권리금 정도로만 잡는다 —
         // 예전 기준(매입가의 60%)을 그대로 두면 임차료를 내면서 자산도 불어나 이중 계상이 된다.
         val slots = airline.slots.entries.sumOf { (city, n) ->
-            n * Balance.SLOT_BASE_PRICE * ((Cities[city].econ + Cities[city].tour) / 100.0) * state.world.inflation * 0.5
+            n * Balance.SLOT_BASE_PRICE * ((Cities[city].standing + Cities[city].tour) / 100.0) * state.world.inflation * 0.5
         }
         val biz = businessValue(state, airline.businesses)
         val stocks = airline.holdings.entries.sumOf { (id, shares) ->

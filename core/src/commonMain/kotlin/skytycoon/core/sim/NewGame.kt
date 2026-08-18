@@ -77,7 +77,7 @@ object NewGame {
         for (seedCo in Companies.all) {
             val fleet = mutableListOf<Plane>()
             for ((typeId, count) in seedCo.startFleet) {
-                val type = eraEquivalent(typeId, year)
+                val type = eraEquivalent(typeId, year, seedCo.home)
                 // 취항 전에 만들어진 기체는 없다 — 1970년에 1968년 취항 737 을
                 // 6년 반 된 것으로 깔면 정비비는 부풀고 자산가치는 깎인다.
                 val oldest = ((year - type.year) * 4).coerceIn(2, 26)
@@ -209,11 +209,26 @@ object NewGame {
      * 시나리오 연도에 존재하지 않는 기종을 좌석 수가 가장 비슷한 동시대 기종으로 바꾼다.
      * (1990년에 창업하는데 DC-9 신조기를 받을 수는 없다)
      */
-    private fun eraEquivalent(typeId: String, year: Int): AircraftType {
+    /**
+     * 시나리오 연도에 없는 기종을 좌석수가 가장 가까운 동시대 기종으로 바꾼다.
+     * 대체 후보도 **같은 진영 안에서** 고른다 — 안 그러면 1990년 시나리오의
+     * 소유즈가 창업부터 서방기를 깔고 시작해 진영 구분이 무너진다.
+     */
+    private fun eraEquivalent(typeId: String, year: Int, homeCityId: String): AircraftType {
         val wanted = AircraftCatalog[typeId]
-        if (year >= wanted.year && year <= wanted.retire) return wanted
-        val available = AircraftCatalog.newFor(year)
+        if (year >= wanted.year && year <= wanted.retire &&
+            AircraftCatalog.operableBy(wanted, homeCityId, year)
+        ) {
+            return wanted
+        }
+        val available = AircraftCatalog.newFor(year, homeCityId)
+            .ifEmpty { AircraftCatalog.newFor(year) }
         if (available.isEmpty()) return wanted
-        return available.minByOrNull { abs(it.seats - wanted.seats) } ?: wanted
+        // 좌석수만 보면 항속거리가 무너진다 — 2012 시나리오에서 소유즈의 Tu-134(84석,
+        // 2,900km)가 좌석이 가장 가까운 ATR 72(74석, **1,500km**)로 바뀌어, 창업
+        // 슬롯이 깔린 목적지 어디에도 못 가는 기재 여섯 대를 들고 시작했다.
+        // 원래 기종만큼은 날 수 있는 후보를 먼저 보고, 없을 때만 좌석수로 물러선다.
+        val farEnough = available.filter { it.range >= wanted.range * 0.8 }
+        return (farEnough.ifEmpty { available }).minByOrNull { abs(it.seats - wanted.seats) } ?: wanted
     }
 }

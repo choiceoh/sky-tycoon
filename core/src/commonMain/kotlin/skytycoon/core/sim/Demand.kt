@@ -28,8 +28,8 @@ object Demand {
         val d = Geo.distance(a.id, b.id)
         if (d < 1.0) return PairDemand(0.0, 0.0)
 
-        val econA = a.econ * devA
-        val econB = b.econ * devB
+        val econA = a.standing * devA
+        val econB = b.standing * devB
         val tourA = a.tour * sqrt(devA)
         val tourB = b.tour * sqrt(devB)
 

@@ -138,7 +138,7 @@ fun SetupScreen(
                         title = "${co.name} · ${home.name} (${home.code})",
                         body = "${co.bonusLabel} — ${co.bonusDesc}",
                         meta = "자본 ${moneyShort(co.cash * startInflation)} · 기재 ${fleet}대 · " +
-                            "허브 규모 ${hubGrade(home.slots, home.econ)} · 성향 ${co.trait.label}",
+                            "허브 규모 ${hubGrade(home.slots, home.standing)} · 성향 ${co.trait.label}",
                         onClick = { company = co.id },
                     )
                 }
