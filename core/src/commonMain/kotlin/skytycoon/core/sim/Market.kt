@@ -34,6 +34,17 @@ data class RouteOutcome(
     val localPax: Double get() = bizPax + leiPax
     val pax: Double get() = localPax + connectPax
     val revenue: Double get() = localRevenue + connectRevenue
+
+    /**
+     * 환승 승객이 쓸 수 있는 **이코노미** 빈자리.
+     *
+     * 총 빈자리를 쓰면 안 된다 — 그러면 앞자리에 앉지 못하게 막아 둔 비프리미엄 수요가
+     * 환승으로 우회해 그 자리를 채운다. 객실을 크게 깔아도 빈자리가 환승으로 메워지니
+     * **과대 객실의 대가가 사라지고**, 게다가 그 손님은 환승 운임만 내면서 앞자리
+     * 승객으로도 안 잡힌다.
+     */
+    val econSpare: Double get() =
+        ((seats - bizSeatsOffered) - (localPax - bizCabinPax)).coerceAtLeast(0.0)
 }
 
 private class Offer(
@@ -431,7 +442,7 @@ object Market {
         val links = HashMap<String, HashMap<String, MutableList<Pair<String, Route>>>>()
         for (r in state.routes) {
             val o = base[r.id] ?: continue
-            val left = o.seats - o.localPax
+            val left = o.econSpare
             if (left <= 1.0) continue
             spare[r.id] = left
             val perAirline = links.getOrPut(r.airlineId) { HashMap() }

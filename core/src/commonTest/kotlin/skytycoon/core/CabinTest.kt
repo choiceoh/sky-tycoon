@@ -93,6 +93,58 @@ class CabinTest {
         }
     }
 
+    /**
+     * 환승 승객은 **이코노미 빈자리만** 쓴다.
+     *
+     * 총 빈자리로 계산하면, 앞자리에 못 앉게 막아 둔 비프리미엄 수요가 환승으로
+     * 우회해 그 자리를 채운다 — 객실을 크게 깔아도 빈자리가 메워지니 과대 객실의
+     * 대가가 사라지고, 그 손님은 환승 운임만 내면서 앞자리 승객으로도 안 잡힌다.
+     */
+    @Test
+    fun `환승 승객이 빈 앞자리를 채우지 않는다`() {
+        val base = NewGame.create(seed = 7)
+        var s: GameState = base.copy(routes = emptyList(), planes = base.planes.map { it.copy(routeId = null) })
+        var nextId = s.nextId
+        val planes = mutableListOf<Plane>()
+        val routes = mutableListOf<Route>()
+        val slots = HashMap<String, Int>()
+        var longHaul = -1
+        fun add(from: String, to: String, type: String): Int {
+            val pid = nextId++
+            val rid = nextId++
+            val cap = Economics.capacity(listOf(Plane(pid, type, "fuji", 8)), Geo.distance(from, to))
+            planes += Plane(pid, type, "fuji", ageQuarters = 8, routeId = rid)
+            routes += Route(rid, "fuji", from, to, freq = cap.maxFreq, planeIds = listOf(pid))
+            slots[from] = (slots[from] ?: 0) + 40
+            slots[to] = (slots[to] ?: 0) + 40
+            return rid
+        }
+        longHaul = add("tokyo", "losangeles", "b747_100")
+        for (spoke in listOf("seoul", "beijing", "hongkong", "taipei")) add("tokyo", spoke, "b727")
+
+        s = s.copy(
+            planes = planes,
+            routes = routes,
+            nextId = nextId,
+            airlines = s.airlines.map { a ->
+                if (a.id == "fuji") a.copy(slots = a.slots + slots, bizShare = Balance.BIZ_SHARE_MAX) else a
+            },
+        )
+        val o = Market.resolveAll(s).getValue(longHaul)
+        val emptyCabin = o.bizSeatsOffered - o.bizCabinPax
+        println(
+            "[환승·객실] 좌석 ${o.seats.toInt()} (앞자리 ${o.bizSeatsOffered.toInt()}, 그중 착석 " +
+                "${o.bizCabinPax.toInt()}) · 로컬 ${o.localPax.toInt()} + 환승 ${o.connectPax.toInt()} " +
+                "= ${o.pax.toInt()}",
+        )
+        assertTrue(emptyCabin > 1.0, "앞자리가 다 차 버려 이 테스트가 아무것도 못 잡는다")
+        assertTrue(
+            o.pax <= o.seats - emptyCabin + 1.0,
+            "환승 승객이 빈 앞자리(${emptyCabin.toInt()}석)까지 채웠다 " +
+                "(총 ${o.pax.toInt()} > 쓸 수 있는 ${(o.seats - emptyCabin).toInt()})",
+        )
+    }
+
     @Test
     fun `프리미엄 수요보다 크게 깔면 앞자리가 빈다`() {
         val big = measure("london", "paris", "b727", Balance.BIZ_SHARE_MAX, 14)

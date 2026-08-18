@@ -409,7 +409,20 @@ private fun RouteComposer(vm: GameViewModel, from: String, to: String, onDismiss
                 VSpace(10)
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(InkPanelHigh).padding(10.dp)) {
                     Column {
-                        KeyValue("분기 공급 좌석", people(Economics.quarterlySeats(effFreq, cap.avgSeats)))
+                        // 객실 배치를 반영한 실제 좌석. 전 좌석 이코노미 기준으로 보여 주면
+                        // 비즈니스 비중을 올려 둔 플레이어에게 없는 좌석을 약속하는 셈이다.
+                        val layout = Economics.cabin(
+                            Economics.quarterlySeats(effFreq, cap.avgSeats),
+                            player.bizShare,
+                        )
+                        KeyValue(
+                            "분기 공급 좌석",
+                            if (layout.biz > 0.0) {
+                                "${people(layout.total)} (앞자리 ${people(layout.biz)})"
+                            } else {
+                                people(layout.total)
+                            },
+                        )
                         KeyValue(
                             "구간 연 수요",
                             people(Demand.annualEstimate(s, Cities[from], Cities[to])),
