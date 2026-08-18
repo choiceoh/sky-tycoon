@@ -62,8 +62,10 @@ object RivalWatch {
         if (now - was < 0.005) return emptyList()
 
         val name = after.airline(rivalId).name
+        // 자사주 매입은 규칙상 막혀 있다(Actions.tradeShares). 방어 수단은 증자로
+        // 희석하는 것과, 상대 지분을 맞사서 되받아치는 것뿐이다 — 없는 수를 권하지 않는다.
         val warning = if (now >= 0.35) {
-            "50% 를 넘기면 회사를 잃습니다. 유상증자로 희석하거나 자사주를 사들여야 합니다."
+            "50% 를 넘기면 회사를 잃습니다. 유상증자로 희석하거나 상대 지분을 맞사서 되받아쳐야 합니다."
         } else {
             "50% 를 넘기면 회사를 잃습니다."
         }
