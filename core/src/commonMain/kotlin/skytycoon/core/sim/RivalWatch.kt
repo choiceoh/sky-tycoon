@@ -39,7 +39,13 @@ object RivalWatch {
      */
     fun report(before: GameState, after: GameState, limit: Int = 4): List<NewsItem> {
         val player = after.airlineOrNull(after.playerId)?.takeIf { it.alive } ?: return emptyList()
-        val myPairs = after.routesOf(player.id).map { pairKey(it.from, it.to) }.toSet()
+        // 편수를 0 으로 멈춰 둔 노선은 기록만 남고 뜨지 않는다 (Actions.tuneRoute 가
+        // active=false 로 둔다). 그 구간까지 "우리 노선"으로 세면, 이미 접은 시장에
+        // 경쟁사가 들어온 것을 우리 일처럼 알리게 된다.
+        val myPairs = after.routesOf(player.id)
+            .filter { it.active && it.freq > 0 }
+            .map { pairKey(it.from, it.to) }
+            .toSet()
 
         val signals = after.livingAirlines
             .filter { it.id != player.id && before.airlineOrNull(it.id)?.alive == true }

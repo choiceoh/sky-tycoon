@@ -245,6 +245,42 @@ class RivalWatchTest {
         assertEquals(emptyList(), news, "같은 시장을 다시 열었을 뿐인데 소식이 났다: $news")
     }
 
+    /**
+     * 편수를 0 으로 멈춰 둔 노선은 기록만 남고 뜨지 않는다. 이미 접은 시장에
+     * 경쟁사가 들어온 것을 "우리 노선" 이라고 알리면 안 된다.
+     */
+    @Test
+    fun ignoresMarketsWeHavePaused() {
+        val before = freshGame()
+        val rival = before.livingAirlines.first { it.id != before.playerId }
+        // 안방을 지나지 않는 구간이어야 한다 — 안방 취항 경보는 우리가 그 구간을
+        // 접었는지와 무관하게 뜨는 것이 맞다.
+        val mine = Route(
+            id = before.routes.maxOf { it.id } + 1,
+            airlineId = before.playerId,
+            from = "osaka",
+            to = "taipei",
+            freq = 7,
+        )
+        // 우리가 그 구간을 멈춰 뒀다.
+        val base = before.copy(routes = before.routes + mine.copy(freq = 0, active = false))
+        val after = base.copy(
+            routes = base.routes + Route(
+                id = base.routes.maxOf { it.id } + 1,
+                airlineId = rival.id,
+                from = mine.from,
+                to = mine.to,
+                freq = 7,
+            ),
+        )
+
+        val news = RivalWatch.report(base, after)
+        assertTrue(
+            news.none { Cities.name(mine.to) in it.headline + it.body },
+            "이미 접은 시장을 우리 노선처럼 알렸다: $news",
+        )
+    }
+
     /** 한 분기에 쏟아지는 양을 묶어 자른다 — 안 그러면 뉴스 탭이 경쟁사 로그가 된다. */
     @Test
     fun capsPerQuarter() {

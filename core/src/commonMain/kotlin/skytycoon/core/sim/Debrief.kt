@@ -236,11 +236,14 @@ object Debrief {
         floor: Double,
     ): List<Cause> {
         val out = mutableListOf<Cause>()
-        // 결산 결과가 붙어 있는 노선 — 즉 그 분기를 실제로 난 노선만 본다. 이번 분기에
-        // 새로 연 노선(결과가 없다)이 지난 분기 탑승률 하락의 원인으로 지목되면 안 된다.
-        // 반대로 결산 뒤에 **닫아 버린** 노선은 여기서 되살릴 수 없다 — 그래서 이 줄들은
+        // 그 분기에 **실제로 좌석을 내놓은** 노선만 본다.
+        //  * 이번 분기에 새로 연 노선은 결산 결과가 없다 — 지난 분기 탑승률 하락의
+        //    원인으로 지목되면 안 된다.
+        //  * 편수를 0 으로 멈춰 둔 노선도 결산이 **빈 결과**를 남기므로 (좌석 0),
+        //    결과의 유무만 보면 뜨지도 않은 노선을 원인으로 댄다.
+        // 반대로 결산 뒤에 닫아 버린 노선은 여기서 되살릴 수 없다 — 그래서 이 줄들은
         // 결산 직후에만 쓴다 (lines 의 includeNetwork 설명 참고).
-        val routes = state.routesOf(airline.id).filter { it.last != null }
+        val routes = state.routesOf(airline.id).filter { (it.last?.seats ?: 0.0) > 0.0 }
 
         val lfDelta = current.loadFactor - previous.loadFactor
         if (abs(lfDelta) >= 0.03) {
