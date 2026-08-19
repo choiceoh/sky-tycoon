@@ -65,6 +65,15 @@ object Ai {
 
     private fun cmd(state: GameState, c: Command): GameState = Actions.execute(state, c).state
 
+    /**
+     * 지금 붙일 수 있는 유휴기 — **이번 분기 중정비로 묶인 기체는 뺀다**.
+     *
+     * 입고는 AI 가 움직이기 전에 정해지므로(TurnEngine.advance), 그냥 `routeId == null`
+     * 로 세면 뜨지도 못할 기체를 놓고 노선을 열거나 급한 리스를 접는다.
+     */
+    private fun idlePlanes(state: GameState, airlineId: String) =
+        state.planesOf(airlineId).filter { it.routeId == null && !it.inCheck(state.turn) }
+
     // ------------------------------------------------------------- 운임·편수 조정
 
     private fun targetFare(trait: Trait): Double = when (trait) {
@@ -176,8 +185,8 @@ object Ai {
                 continue
             }
             // 기재가 한계면 유휴기를 추가 투입한다.
-            val idle = s.planesOf(airlineId).firstOrNull {
-                it.routeId == null && Economics.canFly(AircraftCatalog[it.typeId], dist)
+            val idle = idlePlanes(s, airlineId).firstOrNull {
+                Economics.canFly(AircraftCatalog[it.typeId], dist)
             } ?: continue
             s = cmd(s, Command.AssignPlanes(airlineId, current.id, current.planeIds + idle.id))
             val grown = s.routes.firstOrNull { it.id == current.id } ?: continue
@@ -217,9 +226,9 @@ object Ai {
             val smallestSeats = AircraftCatalog[smallest.typeId].seats
 
             // 이미 가진 유휴기 중에 더 큰 게 있으면 바꿔 단다.
-            val idleBigger = s.planesOf(airlineId)
+            val idleBigger = idlePlanes(s, airlineId)
                 .filter {
-                    it.routeId == null && Economics.canFly(AircraftCatalog[it.typeId], dist) &&
+                    Economics.canFly(AircraftCatalog[it.typeId], dist) &&
                         AircraftCatalog[it.typeId].seats > smallestSeats
                 }
                 .maxByOrNull { AircraftCatalog[it.typeId].seats }
@@ -277,7 +286,7 @@ object Ai {
         val s = state
         val airline = s.airline(airlineId)
         if (Leasing.leaseRoom(s, airline) < 1) return s
-        val idle = s.planesOf(airlineId).filter { it.routeId == null }
+        val idle = idlePlanes(s, airlineId)
 
         // 좌석이 모자란 노선이 실제로 있고, 편수를 더 넣을 슬롯도 남아 있어야 한다.
         // **그 거리를 날 수 있는 유휴기가 없을 때**만 빌린다 — "유휴기가 하나도 없을 때"로
@@ -327,11 +336,12 @@ object Ai {
         val planes = s.planesOf(airlineId)
 
         // 25년 넘은 기재는 정리한다 (리스기는 팔 수 없다 — 기간이 끝나면 알아서 돌아간다).
-        for (p in planes.filter { it.routeId == null && !it.leased && it.ageQuarters > 100 }) {
+        // 정비 중인 기체는 처분 대상에서도 뺀다 — 뜯어 놓은 기체를 그 분기에 팔지는 않는다.
+        for (p in planes.filter { it.routeId == null && !it.leased && !it.inCheck(s.turn) && it.ageQuarters > 100 }) {
             s = cmd(s, Command.SellAircraft(airlineId, p.id))
         }
 
-        val idle = s.planesOf(airlineId).count { it.routeId == null }
+        val idle = idlePlanes(s, airlineId).size
         if (idle >= 4) return s
 
         val type = preferredType(s, s.airline(airlineId)) ?: return s
@@ -452,7 +462,7 @@ object Ai {
 
         while (opened < limit) {
             val airline = s.airline(airlineId)
-            val idle = s.planesOf(airlineId).filter { it.routeId == null }
+            val idle = idlePlanes(s, airlineId)
             if (idle.isEmpty()) break
 
             val reserve = Balance.AI_CASH_FLOOR * s.world.inflation

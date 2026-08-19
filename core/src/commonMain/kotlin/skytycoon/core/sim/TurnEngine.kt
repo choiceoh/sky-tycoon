@@ -21,6 +21,13 @@ object TurnEngine {
         val rng = Rng(state.rngState)
         var s = state
 
+        // **AI 가 움직이기 전에** 입고를 정한다. 뒤에 두면 AI 는 이번 분기에 뜨지도 못할
+        // 기체를 멀쩡한 것으로 보고 계획을 세운다 — 그 기체로 새 노선을 열며 슬롯까지
+        // 사들이거나, "쓸 만한 유휴기가 있다"고 판단해 급한 리스를 접는다. 플레이어는
+        // 이미 화면에서 입고 예정을 보고 판단하므로, 이렇게 두면 양쪽이 같은 정보를 본다.
+        s = Maintenance.scheduleChecks(s)
+        s = s.copy(news = s.news + checkNews(s))
+
         val beforeRivals = s
         s = Ai.actAll(s, rng)
         // AI 매집이 우리 회사를 삼켰다면 그 자리에서 판이 끝난다. 그대로 밀고 나가면
@@ -32,10 +39,6 @@ object TurnEngine {
 
         s = Events.stepWorld(s, rng)
         s = Events.fire(s, rng)
-
-        // 시장이 열리기 전에 정한다 — 이번 분기에 뜯는 기체는 좌석을 내놓지 못한다.
-        s = Maintenance.scheduleChecks(s)
-        s = s.copy(news = s.news + checkNews(s))
 
         // 결산 전에 판다 — 이번 분기에 취항을 접은 도시의 사업이 수익을 한 번 더 받으면 안 된다.
         s = liquidateOrphanBusinesses(s)
@@ -470,9 +473,14 @@ object TurnEngine {
                     .sortedByDescending { it.ageQuarters }
                 for (p in idle) {
                     if (a.cash >= 0) break
+                    // 리스 비중 상한은 여기서도 지킨다. 이 길은 SellAircraft 명령을 거치지
+                    // 않고 기체를 바로 지우므로, 빼먹으면 **일부러 현금을 말려** 소유기를
+                    // 털어내는 것으로 상한을 우회할 수 있다. 못 팔면 아래 긴급 대출로 간다.
+                    val after = s.copy(planes = s.planes.filter { it.id != p.id })
+                    if (Leasing.headroom(after, a) < 0) continue
                     val proceeds = Actions.sellPrice(AircraftCatalog[p.typeId], p.ageQuarters, p.priceMul)
                     a = a.copy(cash = a.cash + proceeds)
-                    s = s.copy(planes = s.planes.filter { it.id != p.id }).withAirline(a.id) { a }
+                    s = after.withAirline(a.id) { a }
                 }
             }
             if (a.cash < 0) {
