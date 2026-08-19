@@ -201,8 +201,8 @@ object TurnEngine {
                     typeId = o.typeId,
                     airlineId = o.airlineId,
                     ageQuarters = 0,
-                    // 발주할 때 치른 값이 장부 기준이다 (그 뒤 카탈로그가 바뀌어도).
-                    valueMul = o.valueMul,
+                    // 발주할 때 치른 가격 체계를 물려받는다 (그 뒤 카탈로그가 바뀌어도).
+                    priceMul = o.priceMul,
                 )
             }
             val airline = state.airlineOrNull(o.airlineId)
@@ -379,7 +379,7 @@ object TurnEngine {
                     .sortedByDescending { it.ageQuarters }
                 for (p in idle) {
                     if (a.cash >= 0) break
-                    val proceeds = Actions.sellPrice(AircraftCatalog[p.typeId], p.ageQuarters)
+                    val proceeds = Actions.sellPrice(AircraftCatalog[p.typeId], p.ageQuarters, p.priceMul)
                     a = a.copy(cash = a.cash + proceeds)
                     s = s.copy(planes = s.planes.filter { it.id != p.id }).withAirline(a.id) { a }
                 }

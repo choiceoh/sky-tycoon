@@ -61,18 +61,21 @@ object Save {
     /**
      * 이미 산 기재의 취득가 기준을 지킨다.
      *
-     * 장부가는 "카탈로그 가격 × [skytycoon.core.model.Plane.valueMul]" 이라, 카탈로그
-     * 가격을 손댄 순간 **옛 세이브의 기재까지 소급해서** 값이 뛴다. 그러면 불러오기만 해도
-     * 자기자본이 부풀고, 산 값보다 비싸게 되팔 수 있다. 그 시절에 치른 값이 기준이므로
+     * 값이 걸리는 모든 곳이 "카탈로그 가격 × [skytycoon.core.model.Plane.priceMul]" 이라,
+     * 카탈로그를 손댄 순간 **옛 세이브의 기재까지 소급해서** 값이 뛴다. 그러면 불러오기만
+     * 해도 자기자본이 부풀고, 산 값보다 비싸게 되팔 수 있다. 그 시절의 가격 체계를
      * 기종별 배수만큼 되돌려 새겨 둔다 (인도 대기 중인 발주도 같다).
+     *
+     * [skytycoon.core.model.Plane.valueMul] 은 건드리지 않는다 — 그쪽은 중고 할인이라
+     * 가격 체계와 다른 축이다.
      */
     private fun keepAircraftCostBasis(state: GameState): GameState {
         if (state.formatVersion >= 2) return state
         fun back(typeId: String) = 1.0 / AircraftCatalog.priceMultiplier(AircraftCatalog[typeId])
         return state.copy(
             formatVersion = FORMAT_VERSION,
-            planes = state.planes.map { it.copy(valueMul = it.valueMul * back(it.typeId)) },
-            orders = state.orders.map { it.copy(valueMul = it.valueMul * back(it.typeId)) },
+            planes = state.planes.map { it.copy(priceMul = it.priceMul * back(it.typeId)) },
+            orders = state.orders.map { it.copy(priceMul = it.priceMul * back(it.typeId)) },
         )
     }
 

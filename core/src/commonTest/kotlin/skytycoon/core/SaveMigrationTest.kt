@@ -2,6 +2,7 @@ package skytycoon.core
 
 import skytycoon.core.save.Save
 import skytycoon.core.data.AircraftCatalog
+import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.NewGame
 import kotlin.math.abs
@@ -34,9 +35,11 @@ class SaveMigrationTest {
         for (p in loaded.planes) {
             val expected = 1.0 / AircraftCatalog.priceMultiplier(AircraftCatalog[p.typeId])
             assertTrue(
-                abs(p.valueMul - expected) < 1e-9,
-                "옛 기재의 취득가 기준이 유지되지 않았다: ${p.valueMul} (기대 $expected)",
+                abs(p.priceMul - expected) < 1e-9,
+                "옛 기재의 가격 체계가 유지되지 않았다: ${p.priceMul} (기대 $expected)",
             )
+            // 중고 할인은 가격 체계와 다른 축이라 건드리면 안 된다.
+            assertTrue(abs(p.valueMul - 1.0) < 1e-9, "중고 할인 기준까지 손댔다: ${p.valueMul}")
         }
 
         // 불러오기만으로 기단 가치가 뛰면 안 된다 — 그 값이 곧 자기자본이고 차입 한도다.
@@ -71,8 +74,8 @@ class SaveMigrationTest {
         assertEquals(1, loaded.orders.size)
         val expected = 1.0 / AircraftCatalog.priceMultiplier(AircraftCatalog["b727"])
         assertTrue(
-            abs(loaded.orders.first().valueMul - expected) < 1e-9,
-            "옛 발주가 새 가격으로 장부에 잡힌다: ${loaded.orders.first().valueMul}",
+            abs(loaded.orders.first().priceMul - expected) < 1e-9,
+            "옛 발주가 새 가격으로 잡힌다: ${loaded.orders.first().priceMul}",
         )
     }
 
@@ -84,8 +87,41 @@ class SaveMigrationTest {
         repeat(3) { s = Save.decode(Save.encode(s)) }
 
         for (p in s.planes) {
-            assertTrue(abs(p.valueMul - 1.0) < 1e-9, "여닫을 때마다 취득가 기준이 깎인다: ${p.valueMul}")
+            assertTrue(abs(p.priceMul - 1.0) < 1e-9, "여닫을 때마다 가격 체계가 깎인다: ${p.priceMul}")
         }
         assertEquals(Save.FORMAT_VERSION, s.formatVersion)
+    }
+
+    /**
+     * 가격 체계는 **값이 걸리는 모든 곳**에 걸려야 한다. 장부에만 새기고 매각가·선급금이
+     * 새 카탈로그를 그대로 쓰면, 옛 기체를 산 값보다 비싸게 되팔 수 있다.
+     */
+    @Test
+    fun legacyBasisReachesSalePriceAndPrepaidOrders() {
+        val fresh = NewGame.create(seed = 5, companyId = "hanseong")
+        val loaded = Save.decode(asLegacy(Save.encode(fresh)))
+        val plane = loaded.planesOf(loaded.playerId).first()
+        val type = AircraftCatalog[plane.typeId]
+
+        val sold = Actions.sellPrice(type, plane.ageQuarters, plane.priceMul)
+        val paidWhenNew = type.price / AircraftCatalog.priceMultiplier(type)
+        assertTrue(sold < paidWhenNew, "옛 기체를 산 값($paidWhenNew)보다 비싸게($sold) 판다")
+
+        // 인도 대기 중인 발주의 선급금도 그 시절 값으로 잡혀야 한다.
+        val order = skytycoon.core.model.Order(
+            id = 9002,
+            airlineId = loaded.playerId,
+            typeId = "b747_100",
+            count = 2,
+            deliverTurn = loaded.turn + 2,
+        )
+        val legacyOrder = order.copy(priceMul = 1.0 / AircraftCatalog.priceMultiplier(AircraftCatalog["b747_100"]))
+        val withNew = loaded.copy(orders = listOf(order))
+        val withLegacy = loaded.copy(orders = listOf(legacyOrder))
+        val me = loaded.player
+        assertTrue(
+            Economics.equity(withLegacy, me) < Economics.equity(withNew, me),
+            "옛 발주의 선급금이 새 가격으로 잡힌다",
+        )
     }
 }
