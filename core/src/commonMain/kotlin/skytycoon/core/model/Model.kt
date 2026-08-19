@@ -379,9 +379,14 @@ data class QuarterResult(
     )
 
     val totalRevenue get() = revenue + cargoRevenue + businessIncome
+    /**
+     * 영업비용 합계. **결산에서 순익을 깎는 항목은 빠짐없이** 들어가야 한다 (이자·법인세는
+     * 영업 밖이라 제외). 하나라도 빠지면 화면의 "영업비용"과 순익이 서로 안 맞아,
+     * 개별 항목을 더한 값과 총계가 어긋난 리포트가 나간다.
+     */
     val operatingCost
-        get() = fuelCost + crewCost + maintCost + landingCost +
-            paxServiceCost + distributionCost + overhead + slotRent +
+        get() = fuelCost + crewCost + maintCost + checkCost + landingCost +
+            paxServiceCost + distributionCost + overhead + slotRent + leaseCost +
             adSpend + depreciation + extraordinaryCost
     val loadFactor get() = if (asks <= 0) 0.0 else (rpk / asks).coerceAtMost(1.0)
 }

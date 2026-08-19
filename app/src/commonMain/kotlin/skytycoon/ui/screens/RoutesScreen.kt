@@ -142,11 +142,12 @@ private fun RouteRow(state: GameState, route: Route, selected: Boolean, onClick:
         }
         // 다음 분기에 정비로 빠지는 기재가 있으면 여기서 알린다. 노선 화면이 편수를
         // 정하는 자리라, 예비기를 붙일지 편수를 줄일지 판단이 일어나는 곳도 여기다.
-        val leaving = state.assignedTo(route.id).count { Maintenance.isDue(it) || it.inCheck(state.turn) }
+        // 화면의 turn 은 **이제 진행할 분기**다 — 지금 isDue 인 기체는 그 분기에 입고된다.
+        val leaving = state.assignedTo(route.id).count { Maintenance.isDue(it) }
         if (leaving > 0) {
             VSpace(4)
             Text(
-                if (leaving >= route.planeIds.size) "다음 분기 전 기재 중정비 — 결항" else "다음 분기 ${leaving}대 중정비 — 편수 감소",
+                if (leaving >= route.planeIds.size) "이번 분기 전 기재 중정비 — 결항" else "이번 분기 ${leaving}대 중정비 — 편수 감소",
                 color = Coral,
                 fontSize = 11.sp,
             )

@@ -352,6 +352,10 @@ object TurnEngine {
         val flown = HashMap<Int, Double>()
         for (route in state.routes) {
             if (!route.active || route.freq <= 0) continue
+            // 공항이 닫힌 분기에는 한 편도 뜨지 않았다 (Market.resolvePair 가 통째로
+            // 건너뛴다). 그런데도 시간을 적립하면 세워 둔 기체가 정비만 일찍 받는다.
+            if (state.cityState[route.from]?.isClosed(state.turn) == true) continue
+            if (state.cityState[route.to]?.isClosed(state.turn) == true) continue
             val onRoute = state.flyingOn(route.id)
             if (onRoute.isEmpty()) continue
             val dist = Geo.distance(route.from, route.to)

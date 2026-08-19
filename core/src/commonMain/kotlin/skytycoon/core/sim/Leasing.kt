@@ -32,6 +32,16 @@ object Leasing {
             Balance.LEASE_RATE_PER_QUARTER * shortPremium
     }
 
+    /**
+     * 리스로 들어올 기체의 기령.
+     *
+     * 생산이 끝난 기종은 중고 매물과 같은 기령으로 들어오고, 그만큼 리스료가 싸다.
+     * **견적 화면과 실제 계약이 같은 값을 써야 한다** — 화면이 기령 0 으로 계산하면
+     * 표시된 리스료가 실제보다 비싸게 뜬다.
+     */
+    fun deliveryAge(state: GameState, type: AircraftType): Int =
+        if (state.year > type.retire) Actions.usedAge(state, type.id) else 0
+
     /** 이번 분기에 이 회사가 낼 리스료 총액 — 노선에 붙었든 세워 뒀든 그대로 나간다. */
     fun quarterlyCost(state: GameState, airlineId: String): Double =
         state.planesOf(airlineId).filter { it.leased }.sumOf { it.leaseRate }
@@ -53,18 +63,30 @@ object Leasing {
      * (자산이 없으니 인수도 안 당한다). 기단의 일정 비율까지만 허용해, 리스를 "판단"으로
      * 남기고 "지배 전략"이 되지 않게 막는다.
      */
-    fun leaseRoom(state: GameState, airline: Airline): Int {
+    fun leaseRoom(state: GameState, airline: Airline): Int =
+        headroom(state, airline).coerceAtLeast(0)
+
+    /**
+     * 상한까지 남은 자리 — **음수도 그대로** 돌려준다.
+     *
+     * 0 으로 깎으면 "이미 넘겼다"와 "딱 맞다"를 구분할 수 없다. 소유기를 파는 쪽에서
+     * 그 구분이 필요하다: 한도까지 빌린 뒤 분모가 된 소유기를 팔면 비중이 뒤에서
+     * 무너지는데, 깎인 값으로 물으면 언제나 0 이라 그 매각이 통과한다.
+     */
+    fun headroom(state: GameState, airline: Airline): Int {
         val fleet = state.planesOf(airline.id)
         val leased = fleet.count { it.leased }
         // 소유기 n 대일 때 리스기는 최대 n * share / (1 - share) 대까지.
         val owned = fleet.size - leased
         val cap = (owned * Balance.LEASE_FLEET_SHARE_MAX / (1.0 - Balance.LEASE_FLEET_SHARE_MAX)).toInt()
-        return (cap - leased).coerceAtLeast(0)
+        return cap - leased
     }
 
     /**
-     * 계약이 끝난 리스기를 돌려보낸다. 배속돼 있었으면 노선에서 빠지므로 그 분기부터
-     * 편수가 깎인다 — 만료를 미리 보여줘야 하는 이유다.
+     * 계약이 끝난 리스기를 돌려보낸다.
+     *
+     * 결산이 끝난 뒤에 부르므로 이번 분기는 온전히 태우고, 배속돼 있었다면 **다음
+     * 분기부터** 그 자리가 빈다 — 만료를 화면에 미리 보여줘야 하는 이유다.
      */
     fun returnExpired(state: GameState): Pair<GameState, List<Plane>> {
         val due = state.planes.filter { p -> p.leaseUntilTurn?.let { it <= state.turn } == true }
@@ -73,7 +95,13 @@ object Leasing {
         val next = state.copy(
             planes = state.planes.filter { it.id !in dueIds },
             routes = state.routes.map { r ->
-                if (r.planeIds.any { it in dueIds }) r.copy(planeIds = r.planeIds - dueIds) else r
+                if (r.planeIds.none { it in dueIds }) return@map r
+                val left = r.planeIds - dueIds
+                // 기재가 하나도 안 남은 노선은 **세워야** 한다. 편수와 active 를 그대로 두면
+                // 좌석은 0 인데 슬롯은 계속 물고(usedSlots), 임차료를 내면서 부대사업
+                // 자격까지 유지하는 유령 노선이 된다 — 게다가 AI 의 노선 정리는 좌석 0 인
+                // 분기를 "판단 근거가 못 되는 분기"로 건너뛰므로 영영 정리되지 않는다.
+                if (left.isEmpty()) r.copy(planeIds = left, freq = 0, active = false) else r.copy(planeIds = left)
             },
         )
         return next to due

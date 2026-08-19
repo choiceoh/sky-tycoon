@@ -301,7 +301,24 @@ object Ai {
         if (revenue <= 0 || Leasing.quarterlyRate(type, term) > revenue * Balance.AI_LEASE_REVENUE_SHARE) return s
         if (!rng.chance(0.5 * skill)) return s
 
-        return cmd(s, Command.LeaseAircraft(airlineId, type.id, 1, term))
+        val before = s.planesOf(airlineId).map { it.id }.toSet()
+        var next = cmd(s, Command.LeaseAircraft(airlineId, type.id, 1, term))
+        // **빌린 자리에 바로 붙인다.** 그러지 않으면 이번 분기 수송력은 그대로인데
+        // 리스료만 나가기 시작하고, 뒤이어 도는 openRoutes 가 그 기체를 엉뚱한 새 노선에
+        // 가져다 쓴다 — 특정 노선이 모자라서 빌린 것이라는 이유가 통째로 사라진다.
+        val leased = next.planesOf(airlineId).firstOrNull { it.id !in before } ?: return next
+        val route = next.routes.firstOrNull { it.id == bursting.id } ?: return next
+        next = cmd(next, Command.AssignPlanes(airlineId, route.id, route.planeIds + leased.id))
+
+        val grown = next.routes.firstOrNull { it.id == route.id } ?: return next
+        val newCap = Economics.capacity(next.assignedTo(grown.id), dist)
+        val want = minOf(
+            newCap.maxFreq,
+            grown.freq + next.freeSlots(airlineId, grown.from).coerceAtLeast(0),
+            grown.freq + next.freeSlots(airlineId, grown.to).coerceAtLeast(0),
+        )
+        if (want > grown.freq) next = cmd(next, Command.TuneRoute(airlineId, grown.id, freq = want))
+        return next
     }
 
     private fun manageFleet(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {

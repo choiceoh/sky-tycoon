@@ -153,6 +153,31 @@ class MaintenanceTest {
         )
     }
 
+    /**
+     * 공항이 닫힌 분기에는 한 편도 뜨지 않았다 — 그런데도 비행시간을 적립하면
+     * 세워 둔 기체가 정비만 일찍 받는다. 원가를 안 무는 분기는 시간도 안 쌓여야 한다.
+     */
+    @Test
+    fun `공항이 닫힌 분기에는 비행시간이 쌓이지 않는다`() {
+        val s0 = fresh()
+        val route = flyingRoute(s0)
+        val before = s0.assignedTo(route.id).associate { it.id to it.hoursSinceCheck }
+        val closed = s0.copy(
+            cityState = s0.cityState + (
+                route.from to (s0.cityState[route.from] ?: skytycoon.core.model.CityState())
+                    .copy(closedUntilTurn = s0.turn)
+                ),
+        )
+        val s = TurnEngine.advance(closed)
+        for (p in s.planes.filter { it.id in before.keys }) {
+            assertEquals(
+                before[p.id],
+                p.hoursSinceCheck,
+                "못 뜬 분기에 비행시간이 붙었다 (${AircraftCatalog[p.typeId].name})",
+            )
+        }
+    }
+
     @Test
     fun `늙은 기체가 더 자주 들어간다`() {
         val t = AircraftCatalog["b727"]

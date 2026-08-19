@@ -605,6 +605,17 @@ object Actions {
         if (plane.routeId != null) return ActionResult.fail(state, "노선에 배속된 기재는 먼저 배속을 풀어야 합니다.")
         // 남의 기체를 팔 수는 없다. 막지 않으면 빌려서 곧바로 되파는 것만으로 현금을 찍는다.
         if (plane.leased) return ActionResult.fail(state, "리스기는 매각할 수 없습니다. 반납하세요.")
+        // 리스 상한은 **소유기 수**를 분모로 삼는다. 한도까지 빌린 뒤 그 분모가 된 소유기를
+        // 팔아 치우면 상한이 뒤에서 무너진다 — 반복하면 기단 전체가 리스가 된다.
+        // 파는 쪽에서도 같은 비율을 지킨다.
+        val afterSale = state.copy(planes = state.planes.filter { it.id != plane.id })
+        if (Leasing.headroom(afterSale, airline) < 0) {
+            return ActionResult.fail(
+                state,
+                "이 기체를 팔면 리스기 비중이 한도(기단의 ${(Balance.LEASE_FLEET_SHARE_MAX * 100).toInt()}%)를 넘습니다. " +
+                    "리스기를 먼저 반납하세요.",
+            )
+        }
         val type = AircraftCatalog[plane.typeId]
         val proceeds = sellPrice(type, plane.ageQuarters, plane.priceMul)
         val next = state
@@ -650,7 +661,7 @@ object Actions {
             return ActionResult.fail(state, "남은 기간(${left}분기)보다 긴 계약은 맺을 수 없습니다.")
         }
 
-        val ageOnDelivery = if (state.year > type.retire) usedAge(state, type.id) else 0
+        val ageOnDelivery = Leasing.deliveryAge(state, type)
         val rate = Leasing.quarterlyRate(type, cmd.quarters, ageOnDelivery)
         var nextId = state.nextId
         val leased = List(cmd.count) {
@@ -686,9 +697,12 @@ object Actions {
         if (fee > 0 && airline.cash < fee) {
             return ActionResult.fail(state, "중도 반납 위약금 ${(fee / 1e6).toInt()}백만 달러가 부족합니다.")
         }
+        // 위약금은 현금에서 바로 빼지 않는다 — 그러면 손익계산서의 순익과 실제 현금
+        // 변동이 어긋나 리포트가 앞뒤가 안 맞고, 그 순익으로 매기는 주가까지 부풀려진다.
+        // 파업 합의금과 같은 자리(일시 비용)에 얹어 결산에서 함께 턴다.
         val next = state
             .copy(planes = state.planes.filter { it.id != plane.id })
-            .withAirline(airline.id) { it.copy(cash = it.cash - fee) }
+            .withAirline(airline.id) { it.copy(pendingCharges = it.pendingCharges + fee) }
         val type = AircraftCatalog[plane.typeId]
         return ActionResult(
             next,

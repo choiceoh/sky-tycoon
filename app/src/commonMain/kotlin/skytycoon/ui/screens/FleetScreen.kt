@@ -130,9 +130,12 @@ private fun OwnedFleet(vm: GameViewModel, modifier: Modifier) {
                         )
                         // 정비로 편수가 깎이는 일은 **미리 보여야** 손을 쓸 수 있다.
                         // 안 보이면 그냥 무작위로 노선이 멈추는 것으로만 보인다.
+                        //
+                        // 화면에 보이는 turn 은 **이제 진행할 분기**다 (advance 가 끝나면서
+                        // +1 된다). 그래서 지금 isDue 인 기체는 이번 분기에 입고돼 결항한다 —
+                        // `inCheck(turn)` 으로 물으면 화면에서는 영영 참이 되지 않는다.
                         val checkNote = when {
-                            plane.inCheck(s.turn) -> "중정비 중 — 이번 분기 결항" to Coral
-                            Maintenance.isDue(plane) -> "중정비 대기 — 다음 분기 입고" to Coral
+                            Maintenance.isDue(plane) -> "중정비 입고 — 이번 분기 결항" to Coral
                             Maintenance.dueSoon(plane) -> "중정비 임박 (${(Maintenance.progress(plane) * 100).toInt()}%)" to Amber
                             else -> null
                         }
@@ -233,7 +236,9 @@ private fun AircraftMarket(vm: GameViewModel, modifier: Modifier) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(catalog, key = { it.id }) { t ->
                 val price = if (usedMode) Actions.usedPrice(s, t.id) else t.price
-                val rent = Leasing.quarterlyRate(t, leaseTerm)
+                // 생산이 끝난 기종은 중고 기령으로 들어와 그만큼 싸다. 기령 0 으로 견적을
+                // 내면 화면에 뜬 값과 실제 청구액이 어긋난다 — 명령과 같은 함수로 묻는다.
+                val rent = Leasing.quarterlyRate(t, leaseTerm, Leasing.deliveryAge(s, t))
                 Column(
                     Modifier
                         .fillMaxWidth()
