@@ -9,6 +9,7 @@ import skytycoon.core.sim.NewGame
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -150,6 +151,23 @@ class SaveMigrationTest {
             again.planes.map { it.hoursSinceCheck },
             "같은 세이브를 열 때마다 정비 시계가 달라진다",
         )
+    }
+
+    /**
+     * 더 새로운 판에서 만든 세이브는 **열지 않는다**.
+     *
+     * 파서가 모르는 키를 버리므로 열면 읽히기는 하는데, 그 안의 새 규칙이 소리 없이
+     * 사라진 상태가 된다. 그대로 저장하면 원본까지 덮어써 되돌릴 수 없다.
+     */
+    @Test
+    fun futureSavesAreRefusedRatherThanSilentlyDowngraded() {
+        val fresh = NewGame.create(seed = 5, companyId = "hanseong")
+        val future = Save.encode(fresh).replace(
+            "\"formatVersion\":${Save.FORMAT_VERSION}",
+            "\"formatVersion\":${Save.FORMAT_VERSION + 1}",
+        )
+        assertTrue(future.contains("\"formatVersion\":${Save.FORMAT_VERSION + 1}"), "미래 세이브를 만들지 못했다")
+        assertNull(Save.decodeOrNull(future), "미래 형식 세이브를 그냥 열었다 — 다음 저장에서 새 필드가 사라진다")
     }
 
     /** 지금 형식의 세이브는 정비 시계를 다시 흩뿌리지 않는다 — 열 때마다 리셋되면 안 된다. */

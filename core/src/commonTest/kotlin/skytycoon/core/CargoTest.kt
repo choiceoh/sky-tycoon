@@ -6,11 +6,13 @@ import skytycoon.core.model.GameState
 import skytycoon.core.model.Plane
 import skytycoon.core.model.Route
 import skytycoon.core.sim.Cargo
+import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Geo
 import skytycoon.core.sim.Market
 import skytycoon.core.sim.NewGame
 import kotlin.math.abs
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -79,13 +81,36 @@ class CargoTest {
      * 화물이 안 되는" 노선을 만들고, 화물을 노리면 여유 있게 굴리라는 압력이 된다.
      */
     @Test
-    fun `만석일수록 실을 자리가 준다`() {
+    fun `많이 태울수록 실을 자리가 준다`() {
         val planes = listOf(Plane(1, "b747_100", "x", 0))
         val dist = Geo.distance("seoul", "newyork")
-        val empty = Cargo.capacityTons(planes, 3, dist, 0.2)
-        val full = Cargo.capacityTons(planes, 3, dist, 1.0)
-        assertTrue(full < empty, "탑승률이 올라도 화물 여력이 그대로다 ($empty → $full)")
+        val seats = Economics.quarterlySeats(3, Economics.capacity(planes, dist).avgSeats)
+        val empty = Cargo.capacityTons(planes, 3, dist, seats * 0.2)
+        val full = Cargo.capacityTons(planes, 3, dist, seats)
+        assertTrue(full < empty, "손님이 늘어도 화물 여력이 그대로다 ($empty → $full)")
         assertTrue(full > 0.0, "만석이라고 화물 여력이 0 이 되면 안 된다")
+    }
+
+    /**
+     * 짐을 미는 것은 사람 수지 탑승률이 아니다. 비즈니스 객실을 크게 깔면 총 좌석이
+     * 줄어 같은 인원에도 탑승률이 오르는데, 벨리 용적은 기체 크기가 정하니 그대로다.
+     * 객실 배치만 다르다는 이유로 화물 여력이 달라지면 안 된다.
+     */
+    @Test
+    fun `객실 배치는 화물 여력을 바꾸지 않는다`() {
+        val planes = listOf(Plane(1, "b747_100", "x", 0))
+        val dist = Geo.distance("seoul", "newyork")
+        val pax = 20_000.0
+        assertEquals(
+            Cargo.capacityTons(planes, 3, dist, pax),
+            Cargo.capacityTons(planes, 3, dist, pax),
+            "같은 인원인데 화물 여력이 달라졌다",
+        )
+        // 사람이 적으면 여력이 늘어야 한다 — 앞자리를 크게 깔면 태우는 인원이 준다.
+        assertTrue(
+            Cargo.capacityTons(planes, 3, dist, pax * 0.6) > Cargo.capacityTons(planes, 3, dist, pax),
+            "손님이 줄었는데 화물 여력이 늘지 않는다",
+        )
     }
 
     /** 초음속기는 동체가 가늘어 화물을 거의 못 싣는다 — 좌석 수만 보면 놓친다. */

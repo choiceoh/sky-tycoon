@@ -46,12 +46,28 @@ object Save {
      * 하필 그 세이브가 무한 증자 문제를 겪던 판이다. 창업 주식 수는 회사 표에 있으니 거기서 되살린다.
      */
     private fun migrate(state: GameState): GameState = state
+        .also(::rejectFutureFormats)
         .let(::fillFoundingShares)
         .let(::keepAircraftCostBasis)
         .let(::staggerCheckClocks)
         // 버전은 마지막에 한 번만 새긴다. 단계마다 새기면 다음 단계가 자기 조건을
-        // "이미 최신"으로 읽고 조용히 건너뛴다.
-        .let { if (it.formatVersion == FORMAT_VERSION) it else it.copy(formatVersion = FORMAT_VERSION) }
+        // "이미 최신"으로 읽고 조용히 건너뛴다. **올려 찍기만 한다** — 내려 찍으면
+        // 미래 형식 세이브에 지금 버전 도장이 찍혀 다음 저장에서 모르는 필드가 통째로
+        // 사라진다 (JSON 파서가 모르는 키를 버리기 때문이다).
+        .let { if (it.formatVersion < FORMAT_VERSION) it.copy(formatVersion = FORMAT_VERSION) else it }
+
+    /**
+     * 더 새로운 판에서 만든 세이브는 **열지 않는다**.
+     *
+     * 파서가 모르는 키를 버리므로, 열면 읽히기는 하지만 그 안의 새 규칙이 소리 없이
+     * 사라진 상태가 된다. 그대로 다시 저장하면 원본까지 덮어써 되돌릴 수 없다.
+     * 거절하면 파일은 온전히 남아 새 판에서 다시 열 수 있다.
+     */
+    private fun rejectFutureFormats(state: GameState) {
+        require(state.formatVersion <= FORMAT_VERSION) {
+            "더 새로운 판(형식 v${state.formatVersion})에서 만든 세이브입니다. 앱을 업데이트하세요."
+        }
+    }
 
     private fun fillFoundingShares(state: GameState): GameState {
         if (state.airlines.all { it.foundingShares > 0.0 }) return state

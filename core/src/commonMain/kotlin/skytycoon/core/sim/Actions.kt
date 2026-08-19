@@ -694,8 +694,16 @@ object Actions {
         if (plane.routeId != null) return ActionResult.fail(state, "노선에 배속된 기재는 먼저 배속을 풀어야 합니다.")
 
         val fee = Leasing.breakFee(state, plane)
-        if (fee > 0 && airline.cash < fee) {
-            return ActionResult.fail(state, "중도 반납 위약금 ${(fee / 1e6).toInt()}백만 달러가 부족합니다.")
+        // 이번 분기에 이미 쌓아 둔 일시 비용까지 합쳐서 본다. 한 건씩만 견주면 현금이
+        // 한 대분뿐인 회사가 여러 대를 잇달아 반납해 감당 못 할 위약금을 쌓는다
+        // (결산에서 한꺼번에 빠져나가 그대로 자본잠식이 된다).
+        val owed = airline.pendingCharges + fee
+        if (fee > 0 && airline.cash < owed) {
+            return ActionResult.fail(
+                state,
+                "중도 반납 위약금 ${(fee / 1e6).toInt()}백만 달러를 낼 현금이 없습니다 " +
+                    "(이번 분기 예정 지출 ${(owed / 1e6).toInt()}백만 달러).",
+            )
         }
         // 위약금은 현금에서 바로 빼지 않는다 — 그러면 손익계산서의 순익과 실제 현금
         // 변동이 어긋나 리포트가 앞뒤가 안 맞고, 그 순익으로 매기는 주가까지 부풀려진다.

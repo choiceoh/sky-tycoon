@@ -177,7 +177,10 @@ object Ai {
         for (route in ranked) {
             val current = s.routes.firstOrNull { it.id == route.id } ?: continue
             val dist = Geo.distance(current.from, current.to)
-            val onRoute = s.planes.filter { it.routeId == current.id }
+            // 이번 분기에 **실제로 뜨는** 기재로 센다. 배속 목록으로 세면 정비 들어간
+            // 기체의 수송력까지 있다고 보고 편수를 올려 슬롯을 쓰는데, 시장은 그 좌석을
+            // 그 자리에서 걷어간다 — 결산과 같은 목록을 봐야 한다.
+            val onRoute = s.flyingOn(current.id)
             val cap = Economics.capacity(onRoute, dist)
 
             if (current.freq < cap.maxFreq) {
@@ -190,7 +193,7 @@ object Ai {
             } ?: continue
             s = cmd(s, Command.AssignPlanes(airlineId, current.id, current.planeIds + idle.id))
             val grown = s.routes.firstOrNull { it.id == current.id } ?: continue
-            val newCap = Economics.capacity(s.planes.filter { it.routeId == grown.id }, dist)
+            val newCap = Economics.capacity(s.flyingOn(grown.id), dist)
             val want = minOf(
                 newCap.maxFreq,
                 grown.freq + s.freeSlots(airlineId, grown.from).coerceAtLeast(0),
@@ -220,7 +223,10 @@ object Ai {
         for (route in stuck.take(2)) {
             val current = s.routes.firstOrNull { it.id == route.id } ?: continue
             val dist = Geo.distance(current.from, current.to)
-            val onRoute = s.planes.filter { it.routeId == current.id }
+            // 정비 중인 기체는 갈아 끼울 대상에서 뺀다. 남겨 두면 배속을 풀고 그 자리에서
+            // 팔아 버려, 이미 입고된 기체의 **중정비비를 통째로 피한다** (결산은 그때
+            // 남아 있는 기단만 청구한다).
+            val onRoute = s.flyingOn(current.id)
             if (onRoute.isEmpty()) continue
             val smallest = onRoute.minByOrNull { AircraftCatalog[it.typeId].seats } ?: continue
             val smallestSeats = AircraftCatalog[smallest.typeId].seats
@@ -320,7 +326,7 @@ object Ai {
         next = cmd(next, Command.AssignPlanes(airlineId, route.id, route.planeIds + leased.id))
 
         val grown = next.routes.firstOrNull { it.id == route.id } ?: return next
-        val newCap = Economics.capacity(next.assignedTo(grown.id), dist)
+        val newCap = Economics.capacity(next.flyingOn(grown.id), dist)
         val want = minOf(
             newCap.maxFreq,
             grown.freq + next.freeSlots(airlineId, grown.from).coerceAtLeast(0),

@@ -54,11 +54,18 @@ object Cargo {
     /**
      * 이 노선이 이번 분기에 내놓는 화물 적재 여력 (톤).
      *
-     * 손님 짐이 먼저 들어간다 — 탑승률이 높을수록 남는 자리가 준다. 여객으로 꽉 찬
-     * 노선이 화물까지 쓸어 담지는 못한다는 뜻이고, 그래서 화물은 큰 기체를 **여유 있게**
+     * 손님 짐이 먼저 들어간다 — 많이 태울수록 남는 자리가 준다. 여객으로 꽉 찬 노선이
+     * 화물까지 쓸어 담지는 못한다는 뜻이고, 그래서 화물은 큰 기체를 **여유 있게**
      * 굴리는 쪽에 붙는다.
+     *
+     * 짐을 미는 것은 **탑승률이 아니라 사람 수**다. 탑승률로 재면 안 된다 — 비즈니스
+     * 객실을 크게 깔면 총 좌석이 줄어 같은 인원에도 탑승률이 올라가는데, 벨리 용적은
+     * 기체 크기가 정하는 것이라 그대로다. 그러면 같은 손님을 실어 나르는 두 편이
+     * **객실 배치만 다르다는 이유로** 화물 여력이 달라진다.
+     *
+     * @param pax 이번 분기 수송 인원
      */
-    fun capacityTons(planes: List<Plane>, freq: Int, distanceKm: Double, loadFactor: Double): Double {
+    fun capacityTons(planes: List<Plane>, freq: Int, distanceKm: Double, pax: Double): Double {
         if (planes.isEmpty() || freq <= 0) return 0.0
         val legs = Economics.quarterlyLegs(freq)
         val shares = Economics.legShares(planes, distanceKm)
@@ -66,7 +73,10 @@ object Cargo {
         for ((i, p) in planes.withIndex()) {
             tons += bellyTons(AircraftCatalog[p.typeId]) * legs * shares[i]
         }
-        val baggage = (Balance.CARGO_BAGGAGE_SHARE * loadFactor.coerceIn(0.0, 1.0)).coerceAtMost(0.95)
+        // 분모는 **물리 좌석**(전 좌석 이코노미 기준)이다 — 객실을 어떻게 나누든 같다.
+        val physicalSeats = Economics.quarterlySeats(freq, Economics.capacity(planes, distanceKm).avgSeats)
+        val load = if (physicalSeats <= 0.0) 0.0 else (pax / physicalSeats).coerceIn(0.0, 1.0)
+        val baggage = (Balance.CARGO_BAGGAGE_SHARE * load).coerceAtMost(0.95)
         return tons * (1.0 - baggage)
     }
 
@@ -125,8 +135,7 @@ object Cargo {
                 if (o.seats <= 0.0) continue
                 val planes = state.flyingOn(r.id)
                 val freq = r.freq.coerceAtMost(Economics.capacity(planes, dist).maxFreq)
-                val lf = (o.pax / o.seats).coerceIn(0.0, 1.0)
-                val tons = capacityTons(planes, freq, dist, lf)
+                val tons = capacityTons(planes, freq, dist, o.pax)
                 if (tons > 0.0) capacity[r.id] = tons
             }
             out.putAll(allocate(state, Cities[idA], Cities[idB], capacity))
@@ -150,7 +159,7 @@ object Cargo {
         if (planes.isEmpty()) return 0.0
         val dist = Geo.distance(route.from, route.to)
         val freq = route.freq.coerceAtMost(Economics.capacity(planes, dist).maxFreq)
-        return capacityTons(planes, freq, dist, route.last?.loadFactor ?: 0.0)
+        return capacityTons(planes, freq, dist, route.last?.pax ?: 0.0)
     }
 
     /** 화면에 쓰는 도시쌍 화물 수요 (톤). */

@@ -219,6 +219,26 @@ class LeasingTest {
         )
     }
 
+    /**
+     * 위약금은 결산에서 **한꺼번에** 빠져나간다. 한 건씩만 현금과 견주면, 한 대분
+     * 현금뿐인 회사가 여러 대를 잇달아 반납해 감당 못 할 금액을 쌓는다.
+     */
+    @Test
+    fun `여러 대를 반납할 때 위약금을 누적해서 본다`() {
+        var s = lease(fresh(), count = 2).state
+        val leasedPlanes = s.planesOf(s.playerId).filter { it.leased }
+        assertEquals(2, leasedPlanes.size, "준비 상태가 잘못됐다")
+        val fee = Leasing.breakFee(s, leasedPlanes.first())
+
+        // 딱 한 대분 위약금만 남기고 현금을 말린다.
+        s = s.copy(airlines = s.airlines.map { if (it.isPlayer) it.copy(cash = fee * 1.5) else it })
+
+        val first = Actions.execute(s, Command.ReturnLease(s.playerId, leasedPlanes[0].id))
+        assertTrue(first.ok, first.message)
+        val second = Actions.execute(first.state, Command.ReturnLease(first.state.playerId, leasedPlanes[1].id))
+        assertFalse(second.ok, "현금이 한 대분뿐인데 두 대를 반납했다")
+    }
+
     /** 판이 끝난 뒤까지 가는 계약은 위약금만 물고 끝난다 — 발주·확장과 같은 함정이다. */
     @Test
     fun `남은 기간보다 긴 계약은 맺을 수 없다`() {
