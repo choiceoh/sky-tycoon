@@ -558,6 +558,15 @@ object Ai {
     private fun attractiveness(state: GameState, airlineId: String, a: City, b: City): Double {
         val demand = Demand.quarterly(state, a, b).total
         if (demand < 1500) return 0.0
+        // 여기서는 일부러 [GameState.flyingOn] 이 **아니라** 배속 목록으로 센다.
+        //
+        // 취항은 몇 해를 가는 결정이라 경쟁자의 **상시 공급**을 봐야 한다. 이번 분기에
+        // 상대 기체가 정비에 들어갔다는 건 잡음이지 신호가 아니다. 뜨는 기체만 세면
+        // 그 시장이 실제보다 비어 보여, 다음 분기면 다시 꽉 차는 구간에 슬롯을 사서
+        // 들어가게 된다 — 아래 로컬 보정이 막으려는 것과 같은 종류의 오판이다.
+        //
+        // 좌석·원가·편수처럼 **이번 분기에 곧바로 값을 치르는** 계산은 반대로 반드시
+        // flyingOn 을 써야 한다 (growFrequency·Market·결산이 그렇다).
         val rivalSeats = state.routes
             .filter { it.active && Geo.pairKey(it.from, it.to) == Geo.pairKey(a.id, b.id) }
             .sumOf { r ->
