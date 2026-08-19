@@ -6,6 +6,7 @@ import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Balance
 import skytycoon.core.sim.Command
 import skytycoon.core.sim.Economics
+import skytycoon.core.sim.Geo
 import skytycoon.core.sim.Leasing
 import skytycoon.core.sim.NewGame
 import skytycoon.core.sim.TurnEngine
@@ -237,6 +238,65 @@ class LeasingTest {
         assertTrue(first.ok, first.message)
         val second = Actions.execute(first.state, Command.ReturnLease(first.state.playerId, leasedPlanes[1].id))
         assertFalse(second.ok, "현금이 한 대분뿐인데 두 대를 반납했다")
+    }
+
+    /**
+     * 광고한 비율을 **딱 맞게** 허용해야 한다.
+     *
+     * 0.6 도 0.4 도 이진수로 정확하지 않아, 그냥 나눠서 자르면 짝수 기단마다 상한이
+     * 한 대씩 모자라게 나온다 (소유기 2대의 상한은 3인데 2.9999999999999996 → 2).
+     */
+    @Test
+    fun `리스 상한이 반올림 오차로 한 대 줄지 않는다`() {
+        // share = 0.6 이면 소유기 n 대의 상한은 n*3/2 (내림).
+        for (owned in 1..8) {
+            val expected = owned * 3 / 2
+            assertEquals(expected, Leasing.maxLeased(owned), "소유기 ${owned}대의 리스 상한")
+        }
+    }
+
+    /**
+     * 일부만 만료돼도 남은 기재가 감당 못 할 편수는 내려야 한다.
+     *
+     * 그대로 두면 시장은 알아서 깎아 태우는데 **슬롯은 옛 편수만큼 계속 물고 임차료를
+     * 낸다** — 아무도 그 편수를 다시 내려 주지 않으므로 그대로 굳는다.
+     */
+    @Test
+    fun `리스 일부가 끝나면 편수를 남은 기재에 맞춘다`() {
+        val short = Balance.LEASE_TERMS.min()
+        var s = lease(fresh(), count = 1, quarters = short).state
+        val leased = s.planesOf(s.playerId).first { it.leased }
+
+        // 소유기 한 대짜리 노선에 리스기를 한 대 더 붙이고 편수를 최대로 올린다.
+        val routeId = s.routesOf(s.playerId).first { it.active && it.freq > 0 }.id
+        val owned = s.assignedTo(routeId).first { !it.leased }
+        s = Actions.execute(s, Command.AssignPlanes(s.playerId, routeId, listOf(owned.id, leased.id))).state
+        val route = s.route(routeId)
+        val dist = Geo.distance(route.from, route.to)
+        val bothFreq = Economics.capacity(s.assignedTo(routeId), dist).maxFreq
+        val soloFreq = Economics.capacity(listOf(owned), dist).maxFreq
+        assertTrue(bothFreq > soloFreq, "두 대와 한 대의 편수 상한이 같아 이 시험이 성립하지 않는다")
+
+        // 슬롯이 편수를 먼저 막지 않도록 넉넉히 쥐여 준다 (홈 공항은 다른 노선도 쓴다).
+        val want = soloFreq + 1
+        s = s.copy(
+            airlines = s.airlines.map { a ->
+                if (a.isPlayer) a.copy(slots = a.slots + (route.from to 400) + (route.to to 400)) else a
+            },
+        )
+        val tuned = Actions.execute(s, Command.TuneRoute(s.playerId, routeId, freq = want))
+        assertTrue(tuned.ok, tuned.message)
+        s = tuned.state
+        assertEquals(want, s.route(routeId).freq, "준비 상태가 잘못됐다")
+
+        repeat(short) { s = TurnEngine.advance(s) }
+
+        val after = s.route(routeId)
+        assertTrue(leased.id !in after.planeIds, "계약이 끝났는데 기체가 남아 있다")
+        assertTrue(
+            after.freq <= soloFreq,
+            "남은 한 대가 감당 못 할 편수(${after.freq} > $soloFreq)가 남아 슬롯을 계속 문다",
+        )
     }
 
     /** 판이 끝난 뒤까지 가는 계약은 위약금만 물고 끝난다 — 발주·확장과 같은 함정이다. */

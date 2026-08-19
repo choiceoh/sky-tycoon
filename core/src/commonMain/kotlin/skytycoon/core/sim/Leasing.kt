@@ -5,6 +5,7 @@ import skytycoon.core.model.AircraftType
 import skytycoon.core.model.Airline
 import skytycoon.core.model.GameState
 import skytycoon.core.model.Plane
+import kotlin.math.floor
 
 /**
  * 운용리스 — 기체를 갖지 않고 빌려 쓰는 길.
@@ -76,10 +77,21 @@ object Leasing {
     fun headroom(state: GameState, airline: Airline): Int {
         val fleet = state.planesOf(airline.id)
         val leased = fleet.count { it.leased }
-        // 소유기 n 대일 때 리스기는 최대 n * share / (1 - share) 대까지.
         val owned = fleet.size - leased
-        val cap = (owned * Balance.LEASE_FLEET_SHARE_MAX / (1.0 - Balance.LEASE_FLEET_SHARE_MAX)).toInt()
-        return cap - leased
+        return maxLeased(owned) - leased
+    }
+
+    /**
+     * 소유기 n 대일 때 빌릴 수 있는 최대 대수 — `leased ≤ n × share / (1 - share)`.
+     *
+     * 그냥 나눠서 자르면 안 된다. 0.6 도 0.4 도 이진수로 정확히 표현되지 않아,
+     * 딱 떨어져야 할 값이 미세하게 **모자라게** 나온다 (소유기 2대의 상한은 3인데
+     * `2 * 0.6 / 0.4` 가 2.9999999999999996 이라 2 로 잘린다). 짝수 기단마다 광고한
+     * 60% 에 한 대씩 못 미치는 셈이라, 오차만큼 올린 뒤 내림한다.
+     */
+    fun maxLeased(owned: Int): Int {
+        val share = Balance.LEASE_FLEET_SHARE_MAX
+        return floor(owned * share / (1.0 - share) + 1e-9).toInt()
     }
 
     /**
@@ -97,11 +109,20 @@ object Leasing {
             routes = state.routes.map { r ->
                 if (r.planeIds.none { it in dueIds }) return@map r
                 val left = r.planeIds - dueIds
-                // 기재가 하나도 안 남은 노선은 **세워야** 한다. 편수와 active 를 그대로 두면
-                // 좌석은 0 인데 슬롯은 계속 물고(usedSlots), 임차료를 내면서 부대사업
-                // 자격까지 유지하는 유령 노선이 된다 — 게다가 AI 의 노선 정리는 좌석 0 인
-                // 분기를 "판단 근거가 못 되는 분기"로 건너뛰므로 영영 정리되지 않는다.
-                if (left.isEmpty()) r.copy(planeIds = left, freq = 0, active = false) else r.copy(planeIds = left)
+                // 남은 기재가 감당할 수 있는 만큼으로 편수를 내린다.
+                //
+                // 편수를 그대로 두면 시장은 알아서 깎아 태우는데 **슬롯은 옛 편수만큼
+                // 계속 물고 임차료를 낸다**(usedSlots 는 route.freq 를 본다). 아무도 그
+                // 편수를 다시 내려 주지 않으므로 그대로 굳는다. 한 대도 안 남았으면
+                // 노선 자체를 세운다 — 좌석 0 인 분기는 노선 정리가 판단 근거에서
+                // 빼기 때문에, 안 세우면 유령 노선이 영영 남는다.
+                val keptOnRoute = state.planes.filter { it.id in left }
+                val maxFreq = Economics.capacity(keptOnRoute, Geo.distance(r.from, r.to)).maxFreq
+                if (left.isEmpty() || maxFreq <= 0) {
+                    r.copy(planeIds = left, freq = 0, active = false)
+                } else {
+                    r.copy(planeIds = left, freq = r.freq.coerceAtMost(maxFreq))
+                }
             },
         )
         return next to due
