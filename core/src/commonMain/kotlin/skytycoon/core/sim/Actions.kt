@@ -54,6 +54,20 @@ sealed interface Command {
     data class BuySlots(override val airlineId: String, val city: String, val count: Int) : Command
 
     /**
+     * 기재를 빌린다. 목돈이 들지 않고 즉시 인도되는 대신, 계약 기간 내내 분기
+     * 리스료가 나가고 기체는 끝내 내 것이 되지 않는다.
+     */
+    data class LeaseAircraft(
+        override val airlineId: String,
+        val typeId: String,
+        val count: Int,
+        val quarters: Int,
+    ) : Command
+
+    /** 리스기를 돌려보낸다. 기간이 남았으면 위약금을 문다. */
+    data class ReturnLease(override val airlineId: String, val planeId: Int) : Command
+
+    /**
      * 쓰지 않는 슬롯을 공항에 반납한다. 슬롯이 임차료를 무는 고정비가 된 이상
      * 되돌릴 길이 없으면 한 번의 과잉 확보가 캠페인 내내 피를 흘리게 만든다.
      */
@@ -118,6 +132,8 @@ object Actions {
             is Command.TuneRoute -> tuneRoute(state, airline, cmd)
             is Command.AssignPlanes -> assignPlanes(state, airline, cmd)
             is Command.BuySlots -> buySlots(state, airline, cmd)
+            is Command.LeaseAircraft -> leaseAircraft(state, airline, cmd)
+            is Command.ReturnLease -> returnLease(state, airline, cmd)
             is Command.ReleaseSlots -> releaseSlots(state, airline, cmd)
             is Command.FundExpansion -> fundExpansion(state, airline, cmd)
             is Command.BuyAircraft -> buyAircraft(state, airline, cmd)
@@ -587,12 +603,124 @@ object Actions {
         val plane = state.planes.firstOrNull { it.id == cmd.planeId && it.airlineId == airline.id }
             ?: return ActionResult.fail(state, "보유하지 않은 기재입니다.")
         if (plane.routeId != null) return ActionResult.fail(state, "노선에 배속된 기재는 먼저 배속을 풀어야 합니다.")
+        // 남의 기체를 팔 수는 없다. 막지 않으면 빌려서 곧바로 되파는 것만으로 현금을 찍는다.
+        if (plane.leased) return ActionResult.fail(state, "리스기는 매각할 수 없습니다. 반납하세요.")
+        // 리스 상한은 **소유기 수**를 분모로 삼는다. 한도까지 빌린 뒤 그 분모가 된 소유기를
+        // 팔아 치우면 상한이 뒤에서 무너진다 — 반복하면 기단 전체가 리스가 된다.
+        // 파는 쪽에서도 같은 비율을 지킨다.
+        val afterSale = state.copy(planes = state.planes.filter { it.id != plane.id })
+        if (Leasing.headroom(afterSale, airline) < 0) {
+            return ActionResult.fail(
+                state,
+                "이 기체를 팔면 리스기 비중이 한도(기단의 ${(Balance.LEASE_FLEET_SHARE_MAX * 100).toInt()}%)를 넘습니다. " +
+                    "리스기를 먼저 반납하세요.",
+            )
+        }
         val type = AircraftCatalog[plane.typeId]
         val proceeds = sellPrice(type, plane.ageQuarters, plane.priceMul)
         val next = state
             .copy(planes = state.planes.filter { it.id != plane.id })
             .withAirline(airline.id) { it.copy(cash = it.cash + proceeds) }
         return ActionResult(next, true, "${type.name} 1대를 매각했습니다.")
+    }
+
+    private fun leaseAircraft(state: GameState, airline: Airline, cmd: Command.LeaseAircraft): ActionResult {
+        if (cmd.count < 1) return ActionResult.fail(state, "1대 이상 빌려야 합니다.")
+        if (cmd.quarters !in Balance.LEASE_TERMS) {
+            return ActionResult.fail(state, "계약 기간은 ${Balance.LEASE_TERMS.joinToString("·")}분기 중에서 고릅니다.")
+        }
+        val type = AircraftCatalog.find(cmd.typeId) ?: return ActionResult.fail(state, "알 수 없는 기종입니다.")
+        if (!AircraftCatalog.operableBy(type, airline.home, state.year)) {
+            return ActionResult.fail(
+                state,
+                if (type.bloc == "east") {
+                    "${type.name}은 구소련권 항공사만 도입할 수 있습니다."
+                } else {
+                    "${AircraftCatalog.IRON_CURTAIN_UNTIL}년까지는 서방 기재를 빌릴 수 없습니다."
+                },
+            )
+        }
+        // 리스 시장에는 생산이 끝난 기종도 한동안 남는다 (중고 매물과 같은 창).
+        if (state.year < type.year) return ActionResult.fail(state, "${type.name}은 ${type.year}년부터 나옵니다.")
+        if (state.year > type.retire + 12) return ActionResult.fail(state, "${type.name}은 시장에서 자취를 감췄습니다.")
+
+        val room = Leasing.leaseRoom(state, airline)
+        if (room < cmd.count) {
+            return ActionResult.fail(
+                state,
+                if (room <= 0) {
+                    "리스기 비중이 한도(기단의 ${(Balance.LEASE_FLEET_SHARE_MAX * 100).toInt()}%)에 찼습니다. 기체를 사서 기단을 늘리세요."
+                } else {
+                    "지금 더 빌릴 수 있는 건 ${room}대까지입니다."
+                },
+            )
+        }
+        // 계약이 판보다 오래 남으면 위약금만 물고 끝난다 — 그럴 계약은 아예 맺지 않는다.
+        val left = state.totalTurns - state.turn
+        if (cmd.quarters > left) {
+            return ActionResult.fail(state, "남은 기간(${left}분기)보다 긴 계약은 맺을 수 없습니다.")
+        }
+
+        val ageOnDelivery = Leasing.deliveryAge(state, type)
+        val rate = Leasing.quarterlyRate(type, cmd.quarters, ageOnDelivery)
+        var nextId = state.nextId
+        val leased = List(cmd.count) {
+            Plane(
+                id = nextId++,
+                typeId = type.id,
+                airlineId = airline.id,
+                ageQuarters = ageOnDelivery,
+                // 빌린 기체는 장부에 오르지 않으므로 취득가 기준은 뜻이 없다.
+                // 마지막으로 뜨는 분기를 새긴다 (checkUntilTurn 과 같은 포함 규칙).
+                leaseUntilTurn = state.turn + cmd.quarters - 1,
+                leaseRate = rate,
+                // 정비 시계는 갓 정비를 마친 상태로 인도된다 (반납 조건이 그렇다).
+                quartersSinceCheck = 0,
+            )
+        }
+        val next = state.copy(planes = state.planes + leased, nextId = nextId)
+        return ActionResult(
+            next,
+            true,
+            "${type.name} ${cmd.count}대를 ${cmd.quarters / 4}년 리스로 들였습니다 " +
+                "(분기 ${(rate * cmd.count / 1e6).toInt()}백만 달러).",
+        )
+    }
+
+    private fun returnLease(state: GameState, airline: Airline, cmd: Command.ReturnLease): ActionResult {
+        val plane = state.planes.firstOrNull { it.id == cmd.planeId && it.airlineId == airline.id }
+            ?: return ActionResult.fail(state, "보유하지 않은 기재입니다.")
+        if (!plane.leased) return ActionResult.fail(state, "리스기가 아닙니다.")
+        if (plane.routeId != null) return ActionResult.fail(state, "노선에 배속된 기재는 먼저 배속을 풀어야 합니다.")
+
+        val fee = Leasing.breakFee(state, plane)
+        // 이번 분기에 이미 쌓아 둔 일시 비용까지 합쳐서 본다. 한 건씩만 견주면 현금이
+        // 한 대분뿐인 회사가 여러 대를 잇달아 반납해 감당 못 할 위약금을 쌓는다
+        // (결산에서 한꺼번에 빠져나가 그대로 자본잠식이 된다).
+        val owed = airline.pendingCharges + fee
+        if (fee > 0 && airline.cash < owed) {
+            return ActionResult.fail(
+                state,
+                "중도 반납 위약금 ${(fee / 1e6).toInt()}백만 달러를 낼 현금이 없습니다 " +
+                    "(이번 분기 예정 지출 ${(owed / 1e6).toInt()}백만 달러).",
+            )
+        }
+        // 위약금은 현금에서 바로 빼지 않는다 — 그러면 손익계산서의 순익과 실제 현금
+        // 변동이 어긋나 리포트가 앞뒤가 안 맞고, 그 순익으로 매기는 주가까지 부풀려진다.
+        // 파업 합의금과 같은 자리(일시 비용)에 얹어 결산에서 함께 턴다.
+        val next = state
+            .copy(planes = state.planes.filter { it.id != plane.id })
+            .withAirline(airline.id) { it.copy(pendingCharges = it.pendingCharges + fee) }
+        val type = AircraftCatalog[plane.typeId]
+        return ActionResult(
+            next,
+            true,
+            if (fee > 0) {
+                "${type.name} 1대를 중도 반납했습니다 (위약금 ${(fee / 1e6).toInt()}백만 달러)."
+            } else {
+                "${type.name} 1대를 반납했습니다."
+            },
+        )
     }
 
     // ------------------------------------------------------------------ 재무

@@ -45,6 +45,9 @@ object Ai {
         s = growFrequency(s, airlineId)
         s = upgauge(s, airlineId, skill)
         s = manageFleet(s, airlineId, rng, skill)
+        // 발주(2분기)를 기다릴 수 없는 자리를 리스로 메운다 — manageFleet 이 유휴기를
+        // 다 쓰고 난 뒤라야 "정말 없는지"가 판가름 난다.
+        s = leaseForUrgentCapacity(s, airlineId, rng, skill)
         s = manageSlots(s, airlineId, rng, skill)
         s = expandAirports(s, airlineId, skill)
         s = openRoutes(s, airlineId, rng, skill)
@@ -62,6 +65,15 @@ object Ai {
 
     private fun cmd(state: GameState, c: Command): GameState = Actions.execute(state, c).state
 
+    /**
+     * 지금 붙일 수 있는 유휴기 — **이번 분기 중정비로 묶인 기체는 뺀다**.
+     *
+     * 입고는 AI 가 움직이기 전에 정해지므로(TurnEngine.advance), 그냥 `routeId == null`
+     * 로 세면 뜨지도 못할 기체를 놓고 노선을 열거나 급한 리스를 접는다.
+     */
+    private fun idlePlanes(state: GameState, airlineId: String) =
+        state.planesOf(airlineId).filter { it.routeId == null && !it.inCheck(state.turn) }
+
     // ------------------------------------------------------------- 운임·편수 조정
 
     private fun targetFare(trait: Trait): Double = when (trait) {
@@ -77,6 +89,11 @@ object Ai {
         val anchor = targetFare(airline.trait)
         for (route in s.routesOf(airlineId)) {
             val last = route.last ?: continue
+            // 못 뜬 분기는 값을 매기는 근거가 못 된다. 좌석이 0 이면 탑승률도 0 으로 잡히는데,
+            // 그걸 "텅 비어서 안 팔렸다"로 읽으면 **뜨지도 않은 분기마다 운임을 깎는다**.
+            // 정비로 한 분기 쉬는 일이 흔해지면서 이 구멍이 노선 운임을 계속 끌어내렸다
+            // (10년 자동조종에서 기업가치가 1397M → 371M). pruneRoutes 와 같은 이유의 방어다.
+            if (last.seats <= 0.0) continue
             val lf = last.loadFactor
             var fare = route.fareMul
             // 만석이면 값을 올리고, 텅 비면 내린다. 실력이 낮은 AI 는 반응이 굼뜨고 잡음이 섞인다.
@@ -160,7 +177,10 @@ object Ai {
         for (route in ranked) {
             val current = s.routes.firstOrNull { it.id == route.id } ?: continue
             val dist = Geo.distance(current.from, current.to)
-            val onRoute = s.planes.filter { it.routeId == current.id }
+            // 이번 분기에 **실제로 뜨는** 기재로 센다. 배속 목록으로 세면 정비 들어간
+            // 기체의 수송력까지 있다고 보고 편수를 올려 슬롯을 쓰는데, 시장은 그 좌석을
+            // 그 자리에서 걷어간다 — 결산과 같은 목록을 봐야 한다.
+            val onRoute = s.flyingOn(current.id)
             val cap = Economics.capacity(onRoute, dist)
 
             if (current.freq < cap.maxFreq) {
@@ -168,12 +188,12 @@ object Ai {
                 continue
             }
             // 기재가 한계면 유휴기를 추가 투입한다.
-            val idle = s.planesOf(airlineId).firstOrNull {
-                it.routeId == null && Economics.canFly(AircraftCatalog[it.typeId], dist)
+            val idle = idlePlanes(s, airlineId).firstOrNull {
+                Economics.canFly(AircraftCatalog[it.typeId], dist)
             } ?: continue
             s = cmd(s, Command.AssignPlanes(airlineId, current.id, current.planeIds + idle.id))
             val grown = s.routes.firstOrNull { it.id == current.id } ?: continue
-            val newCap = Economics.capacity(s.planes.filter { it.routeId == grown.id }, dist)
+            val newCap = Economics.capacity(s.flyingOn(grown.id), dist)
             val want = minOf(
                 newCap.maxFreq,
                 grown.freq + s.freeSlots(airlineId, grown.from).coerceAtLeast(0),
@@ -203,15 +223,18 @@ object Ai {
         for (route in stuck.take(2)) {
             val current = s.routes.firstOrNull { it.id == route.id } ?: continue
             val dist = Geo.distance(current.from, current.to)
-            val onRoute = s.planes.filter { it.routeId == current.id }
+            // 정비 중인 기체는 갈아 끼울 대상에서 뺀다. 남겨 두면 배속을 풀고 그 자리에서
+            // 팔아 버려, 이미 입고된 기체의 **중정비비를 통째로 피한다** (결산은 그때
+            // 남아 있는 기단만 청구한다).
+            val onRoute = s.flyingOn(current.id)
             if (onRoute.isEmpty()) continue
             val smallest = onRoute.minByOrNull { AircraftCatalog[it.typeId].seats } ?: continue
             val smallestSeats = AircraftCatalog[smallest.typeId].seats
 
             // 이미 가진 유휴기 중에 더 큰 게 있으면 바꿔 단다.
-            val idleBigger = s.planesOf(airlineId)
+            val idleBigger = idlePlanes(s, airlineId)
                 .filter {
-                    it.routeId == null && Economics.canFly(AircraftCatalog[it.typeId], dist) &&
+                    Economics.canFly(AircraftCatalog[it.typeId], dist) &&
                         AircraftCatalog[it.typeId].seats > smallestSeats
                 }
                 .maxByOrNull { AircraftCatalog[it.typeId].seats }
@@ -219,7 +242,8 @@ object Ai {
             if (idleBigger != null) {
                 val swapped = current.planeIds - smallest.id + idleBigger.id
                 s = cmd(s, Command.AssignPlanes(airlineId, current.id, swapped))
-                s = cmd(s, Command.SellAircraft(airlineId, smallest.id))
+                // 빌린 기체는 못 판다. 실패해도 상태는 그대로라 그냥 세워 두게 된다.
+                if (!smallest.leased) s = cmd(s, Command.SellAircraft(airlineId, smallest.id))
                 continue
             }
 
@@ -255,17 +279,75 @@ object Ai {
         }
     }
 
+    /**
+     * 지금 당장 붙일 기체가 없을 때 빌린다.
+     *
+     * 리스의 값어치는 "돈이 없을 때"만이 아니라 **"기다릴 수 없을 때"**에도 있다.
+     * 발주는 두 분기 뒤에나 오는데 슬롯과 손님은 이번 분기에 있다. 현금이 두둑한
+     * 회사도 그 두 분기를 사려고 리스를 쓴다 — 이 경로가 없으면 AI 는 현금이 마를
+     * 때만 빌리는데, 실제 판에서 AI 는 늘 현금이 남아 리스를 한 번도 안 쓴다
+     * (FleetProbe 로 확인: 리스 비중 0.0%).
+     */
+    private fun leaseForUrgentCapacity(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {
+        val s = state
+        val airline = s.airline(airlineId)
+        if (Leasing.leaseRoom(s, airline) < 1) return s
+        val idle = idlePlanes(s, airlineId)
+
+        // 좌석이 모자란 노선이 실제로 있고, 편수를 더 넣을 슬롯도 남아 있어야 한다.
+        // **그 거리를 날 수 있는 유휴기가 없을 때**만 빌린다 — "유휴기가 하나도 없을 때"로
+        // 재면 안 된다. 항속거리가 모자라 못 쓰는 기체가 늘 몇 대 세워져 있어서
+        // (기단의 15%), 그 조건으로는 리스가 한 번도 안 걸린다.
+        val bursting = s.routesOf(airlineId).firstOrNull { r ->
+            if ((r.last?.loadFactor ?: 0.0) <= 0.88) return@firstOrNull false
+            if (minOf(s.freeSlots(airlineId, r.from), s.freeSlots(airlineId, r.to)) <= 0) return@firstOrNull false
+            val d = Geo.distance(r.from, r.to)
+            idle.none { Economics.canFly(AircraftCatalog[it.typeId], d) }
+        } ?: return s
+
+        val dist = Geo.distance(bursting.from, bursting.to)
+        val type = AircraftCatalog.newFor(s.year, airline.home)
+            .filter { Economics.canFly(it, dist) }
+            .maxByOrNull { it.seats } ?: return s
+
+        val term = Balance.LEASE_TERMS.max()
+        if (!Actions.arrivesBeforeEnd(s, term)) return s
+        val revenue = airline.lastResult?.totalRevenue ?: 0.0
+        if (revenue <= 0 || Leasing.quarterlyRate(type, term) > revenue * Balance.AI_LEASE_REVENUE_SHARE) return s
+        if (!rng.chance(0.5 * skill)) return s
+
+        val before = s.planesOf(airlineId).map { it.id }.toSet()
+        var next = cmd(s, Command.LeaseAircraft(airlineId, type.id, 1, term))
+        // **빌린 자리에 바로 붙인다.** 그러지 않으면 이번 분기 수송력은 그대로인데
+        // 리스료만 나가기 시작하고, 뒤이어 도는 openRoutes 가 그 기체를 엉뚱한 새 노선에
+        // 가져다 쓴다 — 특정 노선이 모자라서 빌린 것이라는 이유가 통째로 사라진다.
+        val leased = next.planesOf(airlineId).firstOrNull { it.id !in before } ?: return next
+        val route = next.routes.firstOrNull { it.id == bursting.id } ?: return next
+        next = cmd(next, Command.AssignPlanes(airlineId, route.id, route.planeIds + leased.id))
+
+        val grown = next.routes.firstOrNull { it.id == route.id } ?: return next
+        val newCap = Economics.capacity(next.flyingOn(grown.id), dist)
+        val want = minOf(
+            newCap.maxFreq,
+            grown.freq + next.freeSlots(airlineId, grown.from).coerceAtLeast(0),
+            grown.freq + next.freeSlots(airlineId, grown.to).coerceAtLeast(0),
+        )
+        if (want > grown.freq) next = cmd(next, Command.TuneRoute(airlineId, grown.id, freq = want))
+        return next
+    }
+
     private fun manageFleet(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {
         var s = state
         val airline = s.airline(airlineId)
         val planes = s.planesOf(airlineId)
 
-        // 25년 넘은 기재는 정리한다.
-        for (p in planes.filter { it.routeId == null && it.ageQuarters > 100 }) {
+        // 25년 넘은 기재는 정리한다 (리스기는 팔 수 없다 — 기간이 끝나면 알아서 돌아간다).
+        // 정비 중인 기체는 처분 대상에서도 뺀다 — 뜯어 놓은 기체를 그 분기에 팔지는 않는다.
+        for (p in planes.filter { it.routeId == null && !it.leased && !it.inCheck(s.turn) && it.ageQuarters > 100 }) {
             s = cmd(s, Command.SellAircraft(airlineId, p.id))
         }
 
-        val idle = s.planesOf(airlineId).count { it.routeId == null }
+        val idle = idlePlanes(s, airlineId).size
         if (idle >= 4) return s
 
         val type = preferredType(s, s.airline(airlineId)) ?: return s
@@ -280,8 +362,36 @@ object Ai {
         val affordable = ((cash - Balance.AI_CASH_FLOOR * s.world.inflation) / type.price).toInt()
         val want = (affordable.coerceAtMost(Balance.AI_MAX_ORDERS) * aggression).toInt()
         if (want >= 1) {
+            // 확장형·저가형은 기재를 **빌려서** 늘린다. 현금을 슬롯과 노선에 남겨 두고
+            // 두 분기를 기다리지 않는 쪽을 고르는 성향이다 (실제 저비용 항공사가 그렇다).
+            // 이 경로가 없으면 AI 는 늘 현금이 남아 리스를 한 번도 쓰지 않는다.
+            val leaser = airline.trait == Trait.EXPAND || airline.trait == Trait.VALUE
+            val term = Balance.LEASE_TERMS.max()
+            val room = Leasing.leaseRoom(s, s.airline(airlineId))
+            val revenue = s.airline(airlineId).lastResult?.totalRevenue ?: 0.0
+            val rentOk = revenue > 0 &&
+                Leasing.quarterlyRate(type, term) <= revenue * Balance.AI_LEASE_REVENUE_SHARE
+            if (leaser && room >= 1 && rentOk && Actions.arrivesBeforeEnd(s, term) && rng.chance(0.45 * skill)) {
+                return cmd(s, Command.LeaseAircraft(airlineId, type.id, minOf(want, room, 2), term))
+            }
             s = cmd(s, Command.BuyAircraft(airlineId, type.id, want.coerceAtMost(Balance.AI_MAX_ORDERS)))
-        } else if (affordable < 1 && rng.chance(0.3 * skill)) {
+            return s
+        }
+        if (affordable >= 1) return s
+
+        // 살 돈이 없다고 손을 놓지는 않는다 — 빌리는 길이 있다. 목돈 대신 분기 고정비를
+        // 지는 선택이라, 매출에 견줘 리스료가 감당할 만할 때만 손을 댄다. 플레이어에게만
+        // 열린 수단이면 경쟁사는 현금이 마르는 순간 성장이 멈춰 판이 굳는다.
+        val term = Balance.LEASE_TERMS.max()
+        val rate = Leasing.quarterlyRate(type, term)
+        val revenue = s.airline(airlineId).lastResult?.totalRevenue ?: 0.0
+        val canCarry = revenue > 0 && rate <= revenue * Balance.AI_LEASE_REVENUE_SHARE
+        if (canCarry && Leasing.leaseRoom(s, s.airline(airlineId)) >= 1 &&
+            Actions.arrivesBeforeEnd(s, term) && rng.chance(0.4 * skill * aggression)
+        ) {
+            return cmd(s, Command.LeaseAircraft(airlineId, type.id, 1, term))
+        }
+        if (rng.chance(0.3 * skill)) {
             // 신조기가 부담되면 중고를 노린다.
             val used = AircraftCatalog.usedFor(s.year, s.airline(airlineId).home)
                 .filter { Economics.canFly(it, 2000.0) }
@@ -358,7 +468,7 @@ object Ai {
 
         while (opened < limit) {
             val airline = s.airline(airlineId)
-            val idle = s.planesOf(airlineId).filter { it.routeId == null }
+            val idle = idlePlanes(s, airlineId)
             if (idle.isEmpty()) break
 
             val reserve = Balance.AI_CASH_FLOOR * s.world.inflation
@@ -448,6 +558,15 @@ object Ai {
     private fun attractiveness(state: GameState, airlineId: String, a: City, b: City): Double {
         val demand = Demand.quarterly(state, a, b).total
         if (demand < 1500) return 0.0
+        // 여기서는 일부러 [GameState.flyingOn] 이 **아니라** 배속 목록으로 센다.
+        //
+        // 취항은 몇 해를 가는 결정이라 경쟁자의 **상시 공급**을 봐야 한다. 이번 분기에
+        // 상대 기체가 정비에 들어갔다는 건 잡음이지 신호가 아니다. 뜨는 기체만 세면
+        // 그 시장이 실제보다 비어 보여, 다음 분기면 다시 꽉 차는 구간에 슬롯을 사서
+        // 들어가게 된다 — 아래 로컬 보정이 막으려는 것과 같은 종류의 오판이다.
+        //
+        // 좌석·원가·편수처럼 **이번 분기에 곧바로 값을 치르는** 계산은 반대로 반드시
+        // flyingOn 을 써야 한다 (growFrequency·Market·결산이 그렇다).
         val rivalSeats = state.routes
             .filter { it.active && Geo.pairKey(it.from, it.to) == Geo.pairKey(a.id, b.id) }
             .sumOf { r ->
@@ -512,8 +631,12 @@ object Ai {
             val room = (Actions.debtCapacity(s, a) - a.debt).coerceAtLeast(0.0)
             val need = (floor * 3 - a.cash).coerceAtMost(room)
             if (need > 1e6) s = cmd(s, Command.Loan(airlineId, need))
-        } else if (a.debt > 0 && a.cash > floor * 8) {
-            val repay = minOf(a.debt, a.cash - floor * 6)
+        } else if (a.debt > 0 && a.cash > floor * 4) {
+            // 예전에는 현금이 운영 바닥의 8배는 쌓여야 갚기 시작했다. 그래서 빚을 지고
+            // 나면 캠페인 내내 이자만 물었다 — 12판 중 기업가치가 줄어든 두 판이 모두
+            // 부채 최상위였다 (GrowthDiag). 정비·리스로 고정비가 늘어난 뒤로는 그
+            // 이자가 더 무겁다. 여유가 생기는 대로 갚되, 운영 현금은 남긴다.
+            val repay = minOf(a.debt, a.cash - floor * 3)
             if (repay > 1e6) s = cmd(s, Command.Loan(airlineId, -repay))
         }
         return s

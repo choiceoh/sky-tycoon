@@ -35,8 +35,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import skytycoon.core.data.AircraftCatalog
 import skytycoon.core.data.Cities
+import skytycoon.core.model.GameState
 import skytycoon.core.model.Route
+import skytycoon.core.sim.Cargo
 import skytycoon.core.sim.Command
+import skytycoon.core.sim.Maintenance
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Geo
 import skytycoon.ui.Amber
@@ -53,6 +56,7 @@ import skytycoon.ui.components.Panel
 import skytycoon.ui.components.RatioBar
 import skytycoon.ui.components.VSpace
 import skytycoon.ui.decimals
+import skytycoon.ui.grouped
 import skytycoon.ui.km
 import skytycoon.ui.loadFactorColor
 import skytycoon.ui.moneyShort
@@ -76,7 +80,7 @@ fun RoutesScreen(vm: GameViewModel, wide: Boolean) {
     val list = @Composable { modifier: Modifier ->
         LazyColumn(modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(routes, key = { it.id }) { route ->
-                RouteRow(route, selected?.id == route.id) { selectedId = route.id }
+                RouteRow(s, route, selected?.id == route.id) { selectedId = route.id }
             }
         }
     }
@@ -99,7 +103,7 @@ fun RoutesScreen(vm: GameViewModel, wide: Boolean) {
 }
 
 @Composable
-private fun RouteRow(route: Route, selected: Boolean, onClick: () -> Unit) {
+private fun RouteRow(state: GameState, route: Route, selected: Boolean, onClick: () -> Unit) {
     val last = route.last
     Column(
         Modifier
@@ -135,6 +139,18 @@ private fun RouteRow(route: Route, selected: Boolean, onClick: () -> Unit) {
             if (last != null) {
                 Text(percent(last.loadFactor), color = loadFactorColor(last.loadFactor), fontSize = 11.sp)
             }
+        }
+        // 다음 분기에 정비로 빠지는 기재가 있으면 여기서 알린다. 노선 화면이 편수를
+        // 정하는 자리라, 예비기를 붙일지 편수를 줄일지 판단이 일어나는 곳도 여기다.
+        // 화면의 turn 은 **이제 진행할 분기**다 — 지금 isDue 인 기체는 그 분기에 입고된다.
+        val leaving = state.assignedTo(route.id).count { Maintenance.isDue(it) }
+        if (leaving > 0) {
+            VSpace(4)
+            Text(
+                if (leaving >= route.planeIds.size) "이번 분기 전 기재 중정비 — 결항" else "이번 분기 ${leaving}대 중정비 — 편수 감소",
+                color = Coral,
+                fontSize = 11.sp,
+            )
         }
         if (last != null) {
             VSpace(4)
@@ -182,6 +198,15 @@ private fun RouteDetail(vm: GameViewModel, route: Route) {
                 // 환승으로 꽉 찬 노선이 점유율만 낮게 보여 읽는 사람이 헷갈린다.
                 KeyValue("로컬 점유율", percent(r.share))
                 KeyValue("매출", moneyShort(r.revenue))
+                // 화물은 기종·거리·빈자리로 갈린다. 매출 안에 묻어 두면 광동체를 붙일
+                // 이유 하나가 화면에서 통째로 사라진다.
+                val cargoTons = Cargo.routeCapacityTons(s, route.id)
+                if (cargoTons > 0.0) {
+                    KeyValue(
+                        "  화물 적재 여력",
+                        "${grouped(cargoTons.toLong())}t / 구간 수요 ${grouped(Cargo.demandTons(s, route.from, route.to).toLong())}t",
+                    )
+                }
                 // 원가에는 이 노선이 물고 있는 슬롯의 분기 임차료가 들어 있다.
                 KeyValue("원가 (임차료 포함)", moneyShort(r.cost))
                 KeyValue("손익", signedMoney(r.profit), profitColor(r.profit))

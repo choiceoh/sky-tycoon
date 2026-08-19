@@ -237,7 +237,10 @@ object Events {
         // 항공 사고 — 노후 기재를 많이 굴릴수록 확률이 오른다.
         for (a in s.livingAirlines) {
             // 실제로 뜨는 노선의 기재만 대상 — 세워둔 비행기가 착륙 사고를 낼 수는 없다.
-            val planes = s.planesOf(a.id).filter { p -> p.routeId?.let { it in operating } == true }
+            // 중정비로 묶인 기체도 마찬가지다. 입고는 이 함수보다 앞에서 정해지므로
+            // (TurnEngine.advance), 빼지 않으면 뜯어 놓은 기체가 착륙 사고를 낸다.
+            val planes = s.planesOf(a.id)
+                .filter { p -> p.routeId?.let { it in operating } == true && !p.inCheck(s.turn) }
             if (planes.isEmpty()) continue
             val avgAge = planes.sumOf { it.ageQuarters }.toDouble() / planes.size
             val p = 0.004 + (avgAge / 100.0) * 0.016 + (planes.size / 400.0)

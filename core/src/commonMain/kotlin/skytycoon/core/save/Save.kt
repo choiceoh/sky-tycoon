@@ -4,6 +4,8 @@ import kotlinx.serialization.json.Json
 import skytycoon.core.data.Companies
 import skytycoon.core.model.GameState
 import skytycoon.core.data.AircraftCatalog
+import skytycoon.core.sim.Maintenance
+import skytycoon.core.sim.Rng
 
 /** 세이브는 그냥 JSON 한 덩어리다. 파일로 내보내고 다시 불러오기 쉽다. */
 object Save {
@@ -12,8 +14,9 @@ object Save {
      *  * 1 — 버전을 새기기 전 (세이브에는 0 으로 읽힌다)
      *  * 2 — 기재 카탈로그 가격에 기체 급별 배수를 먹인 뒤
      *        ([AircraftCatalog.priceMultiplier])
+     *  * 3 — 중정비가 생긴 뒤 ([skytycoon.core.sim.Maintenance])
      */
-    const val FORMAT_VERSION = 2
+    const val FORMAT_VERSION = 3
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -42,8 +45,29 @@ object Save {
      * 불어난 주식 수를 "원래 주식 수"로 읽어 평생 희석 한도가 통째로 되살아난다.
      * 하필 그 세이브가 무한 증자 문제를 겪던 판이다. 창업 주식 수는 회사 표에 있으니 거기서 되살린다.
      */
-    private fun migrate(state: GameState): GameState =
-        state.let(::fillFoundingShares).let(::keepAircraftCostBasis)
+    private fun migrate(state: GameState): GameState = state
+        .also(::rejectFutureFormats)
+        .let(::fillFoundingShares)
+        .let(::keepAircraftCostBasis)
+        .let(::staggerCheckClocks)
+        // 버전은 마지막에 한 번만 새긴다. 단계마다 새기면 다음 단계가 자기 조건을
+        // "이미 최신"으로 읽고 조용히 건너뛴다. **올려 찍기만 한다** — 내려 찍으면
+        // 미래 형식 세이브에 지금 버전 도장이 찍혀 다음 저장에서 모르는 필드가 통째로
+        // 사라진다 (JSON 파서가 모르는 키를 버리기 때문이다).
+        .let { if (it.formatVersion < FORMAT_VERSION) it.copy(formatVersion = FORMAT_VERSION) else it }
+
+    /**
+     * 더 새로운 판에서 만든 세이브는 **열지 않는다**.
+     *
+     * 파서가 모르는 키를 버리므로, 열면 읽히기는 하지만 그 안의 새 규칙이 소리 없이
+     * 사라진 상태가 된다. 그대로 다시 저장하면 원본까지 덮어써 되돌릴 수 없다.
+     * 거절하면 파일은 온전히 남아 새 판에서 다시 열 수 있다.
+     */
+    private fun rejectFutureFormats(state: GameState) {
+        require(state.formatVersion <= FORMAT_VERSION) {
+            "더 새로운 판(형식 v${state.formatVersion})에서 만든 세이브입니다. 앱을 업데이트하세요."
+        }
+    }
 
     private fun fillFoundingShares(state: GameState): GameState {
         if (state.airlines.all { it.foundingShares > 0.0 }) return state
@@ -73,9 +97,28 @@ object Save {
         if (state.formatVersion >= 2) return state
         fun back(typeId: String) = 1.0 / AircraftCatalog.priceMultiplier(AircraftCatalog[typeId])
         return state.copy(
-            formatVersion = FORMAT_VERSION,
             planes = state.planes.map { it.copy(priceMul = it.priceMul * back(it.typeId)) },
             orders = state.orders.map { it.copy(priceMul = it.priceMul * back(it.typeId)) },
+        )
+    }
+
+    /**
+     * 옛 세이브의 정비 시계를 흩어 놓는다.
+     *
+     * 기본값 0 을 그대로 두면 **기단 전체가 같은 분기에 입고**된다. 20년 굴린 회사가
+     * 불러오기 한 번에 몇 해 뒤 노선망이 통째로 주저앉는 시한폭탄을 떠안는 셈이다.
+     * 기재 id 로 결정론적으로 뽑아 주기 안에 고르게 편다 (같은 세이브는 늘 같은 결과).
+     */
+    private fun staggerCheckClocks(state: GameState): GameState {
+        if (state.formatVersion >= 3) return state
+        return state.copy(
+            planes = state.planes.map { p ->
+                val rng = Rng.fromString("check:" + p.id + ":" + p.typeId)
+                p.copy(
+                    hoursSinceCheck = Maintenance.intervalHours(p) * rng.nextDouble() * 0.9,
+                    quartersSinceCheck = rng.int(0, Maintenance.intervalQuarters(p) - 1),
+                )
+            },
         )
     }
 

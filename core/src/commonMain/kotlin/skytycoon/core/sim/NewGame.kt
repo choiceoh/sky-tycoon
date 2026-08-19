@@ -83,11 +83,17 @@ object NewGame {
                 // 6년 반 된 것으로 깔면 정비비는 부풀고 자산가치는 깎인다.
                 val oldest = ((year - type.year) * 4).coerceIn(2, 26)
                 repeat(count) {
+                    val age = rng.int(2, oldest)
                     fleet += Plane(
                         id = nextId++,
                         typeId = type.id,
                         airlineId = seedCo.id,
-                        ageQuarters = rng.int(2, oldest),
+                        ageQuarters = age,
+                        // 정비 시계를 흩어 놓는다. 전부 0 에서 출발하면 창업 기단이
+                        // 통째로 같은 분기에 입고돼 몇 해 뒤 노선망이 한꺼번에 주저앉는다.
+                        hoursSinceCheck = Maintenance.intervalHours(AircraftCatalog[type.id], age) *
+                            rng.nextDouble() * 0.9,
+                        quartersSinceCheck = rng.int(0, Maintenance.intervalQuarters(age) - 1),
                     )
                 }
             }

@@ -5,6 +5,7 @@ import skytycoon.core.model.GameState
 import skytycoon.core.model.Plane
 import skytycoon.core.model.Route
 import skytycoon.core.sim.Balance
+import skytycoon.core.sim.Cargo
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Geo
 import skytycoon.core.sim.Market
@@ -57,9 +58,10 @@ class FareCurveDiag {
             },
         )
         val route = s.routes.first()
-        val o = Market.resolvePair(s, Cities[x], Cities[y], s.routes).first()
+        val outs = Market.resolvePair(s, Cities[x], Cities[y], s.routes)
+        val o = outs.first()
         val planes = s.planes
-        val cargo = o.revenue * Balance.CARGO_RATE
+        val cargo = Cargo.revenueFor(s, route.id, outs.associateBy { it.routeId })
         val gross = o.revenue + cargo
         val direct = Economics.routeCost(s, s.airline("hanseong"), route, planes, o.pax, gross).total
         val cost = direct + Economics.depreciation(planes) +

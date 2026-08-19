@@ -79,6 +79,14 @@ data class AircraftType(
      * 것도 아니다 — 모스크바 기반 항공사는 1991년까지 서방 기종을 못 산다.
      */
     val bloc: String = "",
+    /**
+     * 광동체인가 — 바닥 아래에 **컨테이너(LD)** 를 실을 수 있는 동체다.
+     *
+     * 화물 적재량은 좌석 수가 아니라 동체 굵기가 정한다. 협동체는 벌크로 몇 톤이
+     * 고작이지만 광동체는 그 서너 배를 싣는다. 좌석 수로 가르려 해 봤지만
+     * 767(218석)과 A321neo(220석)가 같은 칸에 놓여 못 쓴다 — 실물의 구분을 그대로 새긴다.
+     */
+    val widebody: Boolean = false,
 )
 
 enum class Trait(val label: String) {
@@ -205,7 +213,35 @@ data class Plane(
      * ([skytycoon.core.save.Save] 의 마이그레이션 참고).
      */
     val priceMul: Double = 1.0,
-)
+    /**
+     * 마지막 중정비 이후 쌓인 비행시간. [skytycoon.core.sim.Balance.CHECK_INTERVAL_HOURS]
+     * 를 넘기면 다음 분기에 통째로 뜯어 보느라 뜨지 못한다.
+     */
+    val hoursSinceCheck: Double = 0.0,
+    /**
+     * 마지막 중정비 이후 지난 분기 수. 덜 굴린 기체도 달력으로는 늙는다 —
+     * 이게 없으면 세워 둔 예비기가 영원히 새것이라 정비가 공짜 보험이 된다.
+     */
+    val quartersSinceCheck: Int = 0,
+    /** 이 분기까지 중정비로 묶여 있다 (그 분기에는 배속돼 있어도 뜨지 않는다). */
+    val checkUntilTurn: Int = -1,
+    /**
+     * 운용리스로 빌린 기체라면 반납 분기. `null` 이면 소유기다.
+     *
+     * 리스기는 **내 자산이 아니다** — 기단 가치·상각·매각 어디에도 잡히지 않고,
+     * 대신 [leaseRate] 가 매 분기 고정비로 나간다. 자본을 안 쓰는 대신 경기가
+     * 꺾여도 줄지 않는 비용을 지는 쪽이다.
+     */
+    val leaseUntilTurn: Int? = null,
+    /** 분기 리스료 (계약 시점의 명목 달러 — 물가가 올라도 그대로다). */
+    val leaseRate: Double = 0.0,
+) {
+    /** 이번 분기에 중정비로 묶여 있는가. */
+    fun inCheck(turn: Int) = turn <= checkUntilTurn
+
+    /** 빌린 기체인가. */
+    val leased: Boolean get() = leaseUntilTurn != null
+}
 
 /**
  * 진행 중인 공항 확장 공사. 후원사가 공사비를 대고, 완공되면 새 슬롯의 일부를
@@ -277,6 +313,10 @@ data class QuarterResult(
     val fuelCost: Double = 0.0,
     val crewCost: Double = 0.0,
     val maintCost: Double = 0.0,
+    /** 중정비비 — 기체를 통째로 뜯어 보는 값. 노선 정비비와 달리 편수가 아니라 기재에 붙는다. */
+    val checkCost: Double = 0.0,
+    /** 리스료 — 빌린 기재에 매 분기 나가는 고정비. 상각과 달리 현금이 실제로 나간다. */
+    val leaseCost: Double = 0.0,
     val landingCost: Double = 0.0,
     val paxServiceCost: Double = 0.0,
     val distributionCost: Double = 0.0,
@@ -316,11 +356,13 @@ data class QuarterResult(
         fuelCost = fuelCost + o.fuelCost,
         crewCost = crewCost + o.crewCost,
         maintCost = maintCost + o.maintCost,
+        checkCost = checkCost + o.checkCost,
         landingCost = landingCost + o.landingCost,
         paxServiceCost = paxServiceCost + o.paxServiceCost,
         distributionCost = distributionCost + o.distributionCost,
         overhead = overhead + o.overhead,
         slotRent = slotRent + o.slotRent,
+        leaseCost = leaseCost + o.leaseCost,
         adSpend = adSpend + o.adSpend,
         depreciation = depreciation + o.depreciation,
         interestCost = interestCost + o.interestCost,
@@ -339,9 +381,14 @@ data class QuarterResult(
     )
 
     val totalRevenue get() = revenue + cargoRevenue + businessIncome
+    /**
+     * 영업비용 합계. **결산에서 순익을 깎는 항목은 빠짐없이** 들어가야 한다 (이자·법인세는
+     * 영업 밖이라 제외). 하나라도 빠지면 화면의 "영업비용"과 순익이 서로 안 맞아,
+     * 개별 항목을 더한 값과 총계가 어긋난 리포트가 나간다.
+     */
     val operatingCost
-        get() = fuelCost + crewCost + maintCost + landingCost +
-            paxServiceCost + distributionCost + overhead + slotRent +
+        get() = fuelCost + crewCost + maintCost + checkCost + landingCost +
+            paxServiceCost + distributionCost + overhead + slotRent + leaseCost +
             adSpend + depreciation + extraordinaryCost
     val loadFactor get() = if (asks <= 0) 0.0 else (rpk / asks).coerceAtMost(1.0)
 }
@@ -485,6 +532,17 @@ data class GameState(
 
     fun routesOf(airlineId: String) = routes.filter { it.airlineId == airlineId }
     fun planesOf(airlineId: String) = planes.filter { it.airlineId == airlineId }
+
+    /** 이 노선에 배속된 기재 — 중정비로 묶인 기체까지 포함한다 (배속 화면용). */
+    fun assignedTo(routeId: Int) = planes.filter { it.routeId == routeId }
+
+    /**
+     * 그중 **이번 분기에 실제로 뜨는** 기재.
+     *
+     * 좌석·원가·정비시간은 전부 이쪽으로 세야 한다. 한 군데라도 [assignedTo] 를 쓰면
+     * 정비 중인 기체가 손님을 태우거나, 뜨지도 않은 기체의 연료비가 청구된다.
+     */
+    fun flyingOn(routeId: Int) = planes.filter { it.routeId == routeId && !it.inCheck(turn) }
     fun plane(id: Int) = planes.first { it.id == id }
     fun route(id: Int) = routes.first { it.id == id }
 

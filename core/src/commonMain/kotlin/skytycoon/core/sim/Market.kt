@@ -138,7 +138,8 @@ object Market {
             if (!r.active || r.freq <= 0 || r.planeIds.isEmpty()) continue
             val airline = state.airlineOrNull(r.airlineId) ?: continue
             if (!airline.alive) continue
-            val planes = r.planeIds.mapNotNull { id -> state.planes.firstOrNull { it.id == id } }
+            // 중정비로 묶인 기체는 빠진다 — 그만큼 편수와 좌석이 준다.
+            val planes = state.flyingOn(r.id)
             if (planes.isEmpty()) continue
             val cap = Economics.capacity(planes, dist)
             if (!cap.usable) continue
@@ -269,10 +270,12 @@ object Market {
         for (r in state.routes) {
             if (r.id == selfRouteId || r.airlineId != airlineId || !r.active || r.freq <= 0) continue
             if (!r.touches(cityId)) continue
-            if (r.planeIds.isEmpty()) continue
             // 이번 분기에 실제로 못 뜨는 노선은 연결편이 아니다. 반대쪽 공항이 닫혀
             // resolvePair 가 통째로 건너뛴 노선까지 세면, 한 명도 못 나르는 취항지로
             // 네트워크 보너스를 받아 폐쇄 기간에 오히려 점유율이 부풀려진다.
+            // 배속 목록이 아니라 **뜨는 기재**로 세야 한다 — 중정비로 기재가 전부 빠진
+            // 스포크도 planeIds 는 그대로라, 그것만 보면 못 뜨는 연결편으로 보너스를 받는다.
+            if (state.flyingOn(r.id).isEmpty()) continue
             val other = if (r.from == cityId) r.to else r.from
             if (state.cityState[other]?.isClosed(state.turn) == true) continue
             n++

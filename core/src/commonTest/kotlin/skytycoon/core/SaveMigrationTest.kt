@@ -4,10 +4,12 @@ import skytycoon.core.save.Save
 import skytycoon.core.data.AircraftCatalog
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Economics
+import skytycoon.core.sim.Maintenance
 import skytycoon.core.sim.NewGame
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -123,5 +125,62 @@ class SaveMigrationTest {
             Economics.equity(withLegacy, me) < Economics.equity(withNew, me),
             "옛 발주의 선급금이 새 가격으로 잡힌다",
         )
+    }
+
+    /**
+     * 정비 시계가 없던 시절의 세이브를 그냥 열면 기본값 0 이 되어 **기단 전체가 같은
+     * 분기에 입고**된다. 20년 굴린 판이 불러오기 한 번에 노선망이 통째로 주저앉는
+     * 시한폭탄을 떠안는 셈이라, 열면서 주기 안으로 흩어 놓아야 한다.
+     */
+    @Test
+    fun legacyFleetDoesNotAllEnterCheckOnTheSameQuarter() {
+        val fresh = NewGame.create(seed = 5, companyId = "hanseong")
+        // 정비 시계가 없던 세이브 = 모든 기체가 0
+        val zeroed = fresh.copy(planes = fresh.planes.map { it.copy(hoursSinceCheck = 0.0) })
+        val loaded = Save.decode(asLegacy(Save.encode(zeroed)))
+
+        val clocks = loaded.planes.map { Maintenance.progress(it) }
+        assertTrue(clocks.isNotEmpty())
+        assertTrue(clocks.all { it in 0.0..1.0 }, "불러오자마자 입고 대상이 생겼다: $clocks")
+        assertTrue(clocks.distinct().size > clocks.size / 2, "정비 시계가 흩어지지 않았다 (기단이 한꺼번에 입고된다)")
+
+        // 같은 세이브를 두 번 열면 같은 결과여야 한다 (난수를 기재 id 로 고정한 이유).
+        val again = Save.decode(asLegacy(Save.encode(zeroed)))
+        assertEquals(
+            loaded.planes.map { it.hoursSinceCheck },
+            again.planes.map { it.hoursSinceCheck },
+            "같은 세이브를 열 때마다 정비 시계가 달라진다",
+        )
+    }
+
+    /**
+     * 더 새로운 판에서 만든 세이브는 **열지 않는다**.
+     *
+     * 파서가 모르는 키를 버리므로 열면 읽히기는 하는데, 그 안의 새 규칙이 소리 없이
+     * 사라진 상태가 된다. 그대로 저장하면 원본까지 덮어써 되돌릴 수 없다.
+     */
+    @Test
+    fun futureSavesAreRefusedRatherThanSilentlyDowngraded() {
+        val fresh = NewGame.create(seed = 5, companyId = "hanseong")
+        val future = Save.encode(fresh).replace(
+            "\"formatVersion\":${Save.FORMAT_VERSION}",
+            "\"formatVersion\":${Save.FORMAT_VERSION + 1}",
+        )
+        assertTrue(future.contains("\"formatVersion\":${Save.FORMAT_VERSION + 1}"), "미래 세이브를 만들지 못했다")
+        assertNull(Save.decodeOrNull(future), "미래 형식 세이브를 그냥 열었다 — 다음 저장에서 새 필드가 사라진다")
+    }
+
+    /** 지금 형식의 세이브는 정비 시계를 다시 흩뿌리지 않는다 — 열 때마다 리셋되면 안 된다. */
+    @Test
+    fun currentSavesKeepTheirCheckClocks() {
+        val fresh = NewGame.create(seed = 5, companyId = "hanseong")
+        val before = fresh.planes.associate { it.id to it.hoursSinceCheck }
+        val loaded = Save.decode(Save.encode(fresh))
+        for (p in loaded.planes) {
+            assertTrue(
+                abs(p.hoursSinceCheck - (before[p.id] ?: -1.0)) < 1e-9,
+                "여닫으면서 정비 시계가 바뀌었다: ${p.hoursSinceCheck}",
+            )
+        }
     }
 }

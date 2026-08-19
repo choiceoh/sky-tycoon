@@ -21,6 +21,13 @@ object TurnEngine {
         val rng = Rng(state.rngState)
         var s = state
 
+        // **AI 가 움직이기 전에** 입고를 정한다. 뒤에 두면 AI 는 이번 분기에 뜨지도 못할
+        // 기체를 멀쩡한 것으로 보고 계획을 세운다 — 그 기체로 새 노선을 열며 슬롯까지
+        // 사들이거나, "쓸 만한 유휴기가 있다"고 판단해 급한 리스를 접는다. 플레이어는
+        // 이미 화면에서 입고 예정을 보고 판단하므로, 이렇게 두면 양쪽이 같은 정보를 본다.
+        s = Maintenance.scheduleChecks(s)
+        s = s.copy(news = s.news + checkNews(s))
+
         val beforeRivals = s
         s = Ai.actAll(s, rng)
         // AI 매집이 우리 회사를 삼켰다면 그 자리에서 판이 끝난다. 그대로 밀고 나가면
@@ -37,9 +44,11 @@ object TurnEngine {
         s = liquidateOrphanBusinesses(s)
 
         val outcomes = Market.resolveAll(s)
-        s = settle(s, outcomes)
+        // 화물은 여객이 풀린 뒤에 푼다 — 남은 빈자리가 얼마인지 알아야 실을 양이 정해진다.
+        s = settle(s, outcomes, Cargo.resolveAll(s, outcomes))
 
         s = ageFleet(s)
+        s = returnExpiredLeases(s)
         s = deliverOrders(s)
         s = deliverExpansions(s)
         s = updateBrandAndSafety(s)
@@ -63,7 +72,11 @@ object TurnEngine {
 
     // --------------------------------------------------------------- 결산
 
-    private fun settle(state: GameState, outcomes: Map<Int, RouteOutcome>): GameState {
+    private fun settle(
+        state: GameState,
+        outcomes: Map<Int, RouteOutcome>,
+        cargoRevenues: Map<Int, Double>,
+    ): GameState {
         var s = state
         val routeResults = HashMap<Int, RouteResult>()
 
@@ -81,7 +94,8 @@ object TurnEngine {
 
             for (route in routes) {
                 val outcome = outcomes[route.id]
-                val onRoute = planes.filter { it.routeId == route.id }
+                // 정비로 묶인 기체는 뜨지 않는다 — 좌석도 원가도 시장과 같은 목록으로 센다.
+                val onRoute = s.flyingOn(route.id)
                 if (outcome == null || onRoute.isEmpty()) {
                     routeResults[route.id] = RouteResult()
                     continue
@@ -90,7 +104,7 @@ object TurnEngine {
                 val cap = Economics.capacity(onRoute, dist)
                 val effective = route.copy(freq = route.freq.coerceAtMost(cap.maxFreq))
 
-                val cargo = outcome.revenue * Balance.CARGO_RATE
+                val cargo = cargoRevenues[route.id] ?: 0.0
                 val gross = outcome.revenue + cargo
                 val rc = Economics.routeCost(s, airline, effective, onRoute, outcome.pax, gross, outcome.bizCabinPax, outcome.bizSeatsOffered)
 
@@ -121,6 +135,9 @@ object TurnEngine {
             }
 
             val extraordinary = airline.pendingCharges
+            val checkCost = Maintenance.quarterlyCheckCost(s, airline)
+            // 리스료는 뜨든 세워 두든, 경기가 좋든 나쁘든 그대로 나간다 — 고정비의 정의다.
+            val leaseCost = Leasing.quarterlyCost(s, airline.id)
             val overhead = Economics.overhead(s, airline)
             // 슬롯은 임차라 매 분기 나간다 — 놀리는 슬롯도 그대로 청구된다.
             val slotRent = Economics.slotRentTotal(s, airline)
@@ -132,7 +149,7 @@ object TurnEngine {
 
             val revenue = passengerRevenue + cargoRevenue + businessIncome
             val pretax = revenue - cost.total - overhead - slotRent -
-                depreciation - adSpend - interestCost - extraordinary
+                depreciation - adSpend - interestCost - extraordinary - checkCost - leaseCost
             val tax = if (pretax > 0) pretax * Balance.TAX_RATE else 0.0
             val net = pretax - tax
             // 감가상각은 현금이 나가지 않는다.
@@ -146,6 +163,8 @@ object TurnEngine {
                 fuelCost = cost.fuel,
                 crewCost = cost.crew,
                 maintCost = cost.maint,
+                checkCost = checkCost,
+                leaseCost = leaseCost,
                 landingCost = cost.landing + cost.nav,
                 paxServiceCost = cost.paxService,
                 distributionCost = cost.distribution,
@@ -325,8 +344,82 @@ object TurnEngine {
         return s
     }
 
-    private fun ageFleet(state: GameState): GameState =
-        state.copy(planes = state.planes.map { it.copy(ageQuarters = it.ageQuarters + 1) })
+    /**
+     * 기령을 한 분기 올리고, 이번 분기에 실제로 난 만큼 정비시간을 적립한다.
+     *
+     * 원가를 안분한 것과 **같은 몫**([Economics.blockHoursByPlane])으로 센다 — 따로 세면
+     * 기름값을 많이 낸 기체가 정비는 덜 받은 것으로 잡힌다. 정비로 묶여 있던 기체와
+     * 노선에 붙지 않은 기체는 시간이 쌓이지 않는다.
+     */
+    private fun ageFleet(state: GameState): GameState {
+        val flown = HashMap<Int, Double>()
+        for (route in state.routes) {
+            if (!route.active || route.freq <= 0) continue
+            // 공항이 닫힌 분기에는 한 편도 뜨지 않았다 (Market.resolvePair 가 통째로
+            // 건너뛴다). 그런데도 시간을 적립하면 세워 둔 기체가 정비만 일찍 받는다.
+            if (state.cityState[route.from]?.isClosed(state.turn) == true) continue
+            if (state.cityState[route.to]?.isClosed(state.turn) == true) continue
+            val onRoute = state.flyingOn(route.id)
+            if (onRoute.isEmpty()) continue
+            val dist = Geo.distance(route.from, route.to)
+            val cap = Economics.capacity(onRoute, dist)
+            val freq = route.freq.coerceAtMost(cap.maxFreq)
+            for ((id, hours) in Economics.blockHoursByPlane(onRoute, freq, dist)) {
+                flown[id] = (flown[id] ?: 0.0) + hours
+            }
+        }
+        return state.copy(
+            planes = state.planes.map {
+                it.copy(
+                    ageQuarters = it.ageQuarters + 1,
+                    hoursSinceCheck = it.hoursSinceCheck + (flown[it.id] ?: 0.0),
+                    // 달력은 뜨든 안 뜨든 간다 — 방금 정비를 마친 기체만 0 에서 다시 센다.
+                    quartersSinceCheck = if (it.checkUntilTurn == state.turn) 0 else it.quartersSinceCheck + 1,
+                )
+            },
+        )
+    }
+
+    /**
+     * 계약이 끝난 리스기를 돌려보낸다.
+     *
+     * 결산이 끝난 뒤에 뺀다 — 이번 분기는 태우고 리스료도 냈으니 매출·원가에 온전히
+     * 잡혀야 한다. 다음 분기부터 그 자리가 빈다.
+     */
+    private fun returnExpiredLeases(state: GameState): GameState {
+        val (next, returned) = Leasing.returnExpired(state)
+        if (returned.isEmpty()) return state
+        val mine = returned.filter { it.airlineId == state.playerId }
+        if (mine.isEmpty()) return next
+        val names = mine.map { AircraftCatalog[it.typeId].name }.distinct().take(3).joinToString(", ")
+        val onRoute = mine.count { it.routeId != null }
+        return next.copy(
+            news = next.news + NewsItem(
+                turn = state.turn,
+                kind = NewsKind.PLAYER,
+                headline = "리스 만료 ${mine.size}대 반납",
+                body = "$names 계약이 끝나 돌려보냈습니다" +
+                    if (onRoute > 0) " — ${onRoute}대가 노선에서 빠졌습니다." else ".",
+            ),
+        )
+    }
+
+    /** 정비로 편수가 깎이는 일은 미리 알아야 손을 쓸 수 있다. */
+    private fun checkNews(state: GameState): List<NewsItem> {
+        val mine = Maintenance.inCheckThisQuarter(state, state.playerId)
+        if (mine.isEmpty()) return emptyList()
+        val grounded = mine.count { it.routeId != null }
+        val names = mine.map { AircraftCatalog[it.typeId].name }.distinct().take(3).joinToString(", ")
+        return listOf(
+            NewsItem(
+                turn = state.turn,
+                kind = NewsKind.PLAYER,
+                headline = "중정비 입고 ${mine.size}대",
+                body = "$names 등이 이번 분기 정비에 들어갑니다" +
+                    if (grounded > 0) " — ${grounded}대가 노선에서 빠져 편수가 줄어듭니다." else ".",
+            ),
+        )
+    }
 
     private fun updateBrandAndSafety(state: GameState): GameState = state.copy(
         airlines = state.airlines.map { a ->
@@ -374,14 +467,20 @@ object TurnEngine {
                 }
             }
             if (a.cash < 0) {
-                // 유휴 기재를 오래된 것부터 판다.
-                val idle = s.planesOf(a.id).filter { it.routeId == null }
+                // 유휴 기재를 오래된 것부터 판다. 리스기는 남의 것이라 팔 수 없다 —
+                // 빼먹으면 현금이 마른 회사가 빌린 기체를 팔아 연명한다.
+                val idle = s.planesOf(a.id).filter { it.routeId == null && !it.leased }
                     .sortedByDescending { it.ageQuarters }
                 for (p in idle) {
                     if (a.cash >= 0) break
+                    // 리스 비중 상한은 여기서도 지킨다. 이 길은 SellAircraft 명령을 거치지
+                    // 않고 기체를 바로 지우므로, 빼먹으면 **일부러 현금을 말려** 소유기를
+                    // 털어내는 것으로 상한을 우회할 수 있다. 못 팔면 아래 긴급 대출로 간다.
+                    val after = s.copy(planes = s.planes.filter { it.id != p.id })
+                    if (Leasing.headroom(after, a) < 0) continue
                     val proceeds = Actions.sellPrice(AircraftCatalog[p.typeId], p.ageQuarters, p.priceMul)
                     a = a.copy(cash = a.cash + proceeds)
-                    s = s.copy(planes = s.planes.filter { it.id != p.id }).withAirline(a.id) { a }
+                    s = after.withAirline(a.id) { a }
                 }
             }
             if (a.cash < 0) {

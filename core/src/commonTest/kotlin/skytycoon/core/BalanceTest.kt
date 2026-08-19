@@ -6,6 +6,7 @@ import skytycoon.core.model.GameState
 import skytycoon.core.model.Plane
 import skytycoon.core.model.Route
 import skytycoon.core.sim.Balance
+import skytycoon.core.sim.Cargo
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Geo
 import skytycoon.core.sim.Market
@@ -80,10 +81,12 @@ class BalanceTest {
         val a = Cities[route.from]
         val b = Cities[route.to]
         val sameRoutes = state.routes.filter { Geo.pairKey(it.from, it.to) == Geo.pairKey(a.id, b.id) }
-        val outcome = Market.resolvePair(state, a, b, sameRoutes).first { it.routeId == routeId }
+        val outcomes = Market.resolvePair(state, a, b, sameRoutes)
+        val outcome = outcomes.first { it.routeId == routeId }
         val planes = state.planes.filter { it.routeId == routeId }
 
-        val cargo = outcome.revenue * Balance.CARGO_RATE
+        // 화물은 구간의 적재 여력을 나눠 갖는다 — 같은 구간의 경쟁자까지 넣어야 맞는다.
+        val cargo = Cargo.revenueFor(state, routeId, outcomes.associateBy { it.routeId })
         val gross = outcome.revenue + cargo
         val direct = Economics.routeCost(state, airline, route, planes, outcome.pax, gross).total
         val ownership = Economics.depreciation(planes)
