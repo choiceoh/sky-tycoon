@@ -108,6 +108,39 @@ object Economics {
     fun quarterlyLegs(freq: Int): Double = freq * 2.0 * Balance.WEEKS_PER_QUARTER
 
     /**
+     * 편수를 기재들이 나눠 가지는 몫 (합이 1).
+     *
+     * 기종마다 한 바퀴에 묶이는 시간이 달라 빠른 기재가 더 많은 편을 가져간다.
+     * **원가 안분과 정비시간 적립이 같은 몫을 써야 한다** — 따로 세면 연료비를 많이 낸
+     * 기체가 정비는 덜 받은 것으로 잡혀 점검 주기가 원가와 어긋난다.
+     */
+    fun legShares(planes: List<Plane>, distanceKm: Double): DoubleArray {
+        val raw = DoubleArray(planes.size) {
+            Balance.MAX_WEEKLY_HOURS / roundTripHours(AircraftCatalog[planes[it].typeId], distanceKm)
+        }
+        val sum = raw.sum()
+        if (sum <= 0.0) return DoubleArray(planes.size)
+        for (i in raw.indices) raw[i] = raw[i] / sum
+        return raw
+    }
+
+    /**
+     * 이 노선에서 각 기재가 이번 분기에 쌓는 블록타임 (기재 id → 시간).
+     * 중정비 주기가 이 시간으로 돌아간다.
+     */
+    fun blockHoursByPlane(planes: List<Plane>, freq: Int, distanceKm: Double): Map<Int, Double> {
+        if (planes.isEmpty() || freq <= 0) return emptyMap()
+        val legs = quarterlyLegs(freq)
+        val shares = legShares(planes, distanceKm)
+        val out = HashMap<Int, Double>(planes.size)
+        for ((i, p) in planes.withIndex()) {
+            val t = AircraftCatalog[p.typeId]
+            out[p.id] = blockHoursPerLeg(t, distanceKm) * legs * shares[i]
+        }
+        return out
+    }
+
+    /**
      * 노선 하나의 분기 운항 원가.
      * @param pax 실제 수송 승객 수 (기내 서비스비가 여기 붙는다)
      * @param revenue 여객+화물 매출 (판매·유통비가 여기 붙는다)
@@ -135,10 +168,8 @@ object Economics {
         var crew = 0.0
         var maint = 0.0
         var landingSeats = 0.0
-        var shareSum = 0.0
-        val shares = planes.map { Balance.MAX_WEEKLY_HOURS / roundTripHours(AircraftCatalog[it.typeId], dist) }
-        shareSum = shares.sum()
-        if (shareSum <= 0.0) return RouteCost()
+        val shares = legShares(planes, dist)
+        if (shares.sum() <= 0.0) return RouteCost()
 
         val hangarDiscount = if (airline.businesses.any { it.type == BusinessType.HANGAR }) {
             1.0 - BusinessType.HANGAR.maintDiscount
@@ -149,8 +180,7 @@ object Economics {
 
         for ((i, p) in planes.withIndex()) {
             val t = AircraftCatalog[p.typeId]
-            val portion = shares[i] / shareSum
-            val myLegs = legs * portion
+            val myLegs = legs * shares[i]
             val block = blockHoursPerLeg(t, dist) * myLegs
             fuel += myLegs * dist * t.fuel * state.world.oil * fuelBonus
             crew += block * t.crew * inflation

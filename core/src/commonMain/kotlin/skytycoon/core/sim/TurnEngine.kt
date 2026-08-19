@@ -33,6 +33,10 @@ object TurnEngine {
         s = Events.stepWorld(s, rng)
         s = Events.fire(s, rng)
 
+        // 시장이 열리기 전에 정한다 — 이번 분기에 뜯는 기체는 좌석을 내놓지 못한다.
+        s = Maintenance.scheduleChecks(s)
+        s = s.copy(news = s.news + checkNews(s))
+
         // 결산 전에 판다 — 이번 분기에 취항을 접은 도시의 사업이 수익을 한 번 더 받으면 안 된다.
         s = liquidateOrphanBusinesses(s)
 
@@ -81,7 +85,8 @@ object TurnEngine {
 
             for (route in routes) {
                 val outcome = outcomes[route.id]
-                val onRoute = planes.filter { it.routeId == route.id }
+                // 정비로 묶인 기체는 뜨지 않는다 — 좌석도 원가도 시장과 같은 목록으로 센다.
+                val onRoute = s.flyingOn(route.id)
                 if (outcome == null || onRoute.isEmpty()) {
                     routeResults[route.id] = RouteResult()
                     continue
@@ -121,6 +126,7 @@ object TurnEngine {
             }
 
             val extraordinary = airline.pendingCharges
+            val checkCost = Maintenance.quarterlyCheckCost(s, airline)
             val overhead = Economics.overhead(s, airline)
             // 슬롯은 임차라 매 분기 나간다 — 놀리는 슬롯도 그대로 청구된다.
             val slotRent = Economics.slotRentTotal(s, airline)
@@ -132,7 +138,7 @@ object TurnEngine {
 
             val revenue = passengerRevenue + cargoRevenue + businessIncome
             val pretax = revenue - cost.total - overhead - slotRent -
-                depreciation - adSpend - interestCost - extraordinary
+                depreciation - adSpend - interestCost - extraordinary - checkCost
             val tax = if (pretax > 0) pretax * Balance.TAX_RATE else 0.0
             val net = pretax - tax
             // 감가상각은 현금이 나가지 않는다.
@@ -146,6 +152,7 @@ object TurnEngine {
                 fuelCost = cost.fuel,
                 crewCost = cost.crew,
                 maintCost = cost.maint,
+                checkCost = checkCost,
                 landingCost = cost.landing + cost.nav,
                 paxServiceCost = cost.paxService,
                 distributionCost = cost.distribution,
@@ -325,8 +332,54 @@ object TurnEngine {
         return s
     }
 
-    private fun ageFleet(state: GameState): GameState =
-        state.copy(planes = state.planes.map { it.copy(ageQuarters = it.ageQuarters + 1) })
+    /**
+     * 기령을 한 분기 올리고, 이번 분기에 실제로 난 만큼 정비시간을 적립한다.
+     *
+     * 원가를 안분한 것과 **같은 몫**([Economics.blockHoursByPlane])으로 센다 — 따로 세면
+     * 기름값을 많이 낸 기체가 정비는 덜 받은 것으로 잡힌다. 정비로 묶여 있던 기체와
+     * 노선에 붙지 않은 기체는 시간이 쌓이지 않는다.
+     */
+    private fun ageFleet(state: GameState): GameState {
+        val flown = HashMap<Int, Double>()
+        for (route in state.routes) {
+            if (!route.active || route.freq <= 0) continue
+            val onRoute = state.flyingOn(route.id)
+            if (onRoute.isEmpty()) continue
+            val dist = Geo.distance(route.from, route.to)
+            val cap = Economics.capacity(onRoute, dist)
+            val freq = route.freq.coerceAtMost(cap.maxFreq)
+            for ((id, hours) in Economics.blockHoursByPlane(onRoute, freq, dist)) {
+                flown[id] = (flown[id] ?: 0.0) + hours
+            }
+        }
+        return state.copy(
+            planes = state.planes.map {
+                it.copy(
+                    ageQuarters = it.ageQuarters + 1,
+                    hoursSinceCheck = it.hoursSinceCheck + (flown[it.id] ?: 0.0),
+                    // 달력은 뜨든 안 뜨든 간다 — 방금 정비를 마친 기체만 0 에서 다시 센다.
+                    quartersSinceCheck = if (it.checkUntilTurn == state.turn) 0 else it.quartersSinceCheck + 1,
+                )
+            },
+        )
+    }
+
+    /** 정비로 편수가 깎이는 일은 미리 알아야 손을 쓸 수 있다. */
+    private fun checkNews(state: GameState): List<NewsItem> {
+        val mine = Maintenance.inCheckThisQuarter(state, state.playerId)
+        if (mine.isEmpty()) return emptyList()
+        val grounded = mine.count { it.routeId != null }
+        val names = mine.map { AircraftCatalog[it.typeId].name }.distinct().take(3).joinToString(", ")
+        return listOf(
+            NewsItem(
+                turn = state.turn,
+                kind = NewsKind.PLAYER,
+                headline = "중정비 입고 ${mine.size}대",
+                body = "$names 등이 이번 분기 정비에 들어갑니다" +
+                    if (grounded > 0) " — ${grounded}대가 노선에서 빠져 편수가 줄어듭니다." else ".",
+            ),
+        )
+    }
 
     private fun updateBrandAndSafety(state: GameState): GameState = state.copy(
         airlines = state.airlines.map { a ->

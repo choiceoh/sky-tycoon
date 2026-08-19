@@ -179,6 +179,9 @@ object Debrief {
         // 나머지 비용은 가장 크게 움직인 한 줄만 남긴다 — 다 적으면 결국 계정과목표가 된다.
         val others = listOf(
             "정비비" to current.maintCost - previous.maintCost,
+            // 중정비는 몇 분기에 한 번 몰아서 나간다 — 순익이 그 분기에만 꺾이는 흔한 원인이라
+            // 빼 두면 "이유 없이 나빠진 분기"로 보인다.
+            "중정비비" to current.checkCost - previous.checkCost,
             "승무원 인건비" to current.crewCost - previous.crewCost,
             "공항·항행료" to current.landingCost - previous.landingCost,
             "슬롯 임차료" to current.slotRent - previous.slotRent,

@@ -138,7 +138,8 @@ object Market {
             if (!r.active || r.freq <= 0 || r.planeIds.isEmpty()) continue
             val airline = state.airlineOrNull(r.airlineId) ?: continue
             if (!airline.alive) continue
-            val planes = r.planeIds.mapNotNull { id -> state.planes.firstOrNull { it.id == id } }
+            // 중정비로 묶인 기체는 빠진다 — 그만큼 편수와 좌석이 준다.
+            val planes = state.flyingOn(r.id)
             if (planes.isEmpty()) continue
             val cap = Economics.capacity(planes, dist)
             if (!cap.usable) continue

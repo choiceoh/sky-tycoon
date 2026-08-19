@@ -31,6 +31,7 @@ import skytycoon.core.data.Cities
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Balance
 import skytycoon.core.sim.Command
+import skytycoon.core.sim.Maintenance
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
 import skytycoon.ui.GameViewModel
@@ -125,6 +126,17 @@ private fun OwnedFleet(vm: GameViewModel, modifier: Modifier) {
                             color = if (route == null) Coral else Mint,
                             fontSize = 11.sp,
                         )
+                        // 정비로 편수가 깎이는 일은 **미리 보여야** 손을 쓸 수 있다.
+                        // 안 보이면 그냥 무작위로 노선이 멈추는 것으로만 보인다.
+                        val checkNote = when {
+                            plane.inCheck(s.turn) -> "중정비 중 — 이번 분기 결항" to Coral
+                            Maintenance.isDue(plane) -> "중정비 대기 — 다음 분기 입고" to Coral
+                            Maintenance.dueSoon(plane) -> "중정비 임박 (${(Maintenance.progress(plane) * 100).toInt()}%)" to Amber
+                            else -> null
+                        }
+                        if (checkNote != null) {
+                            Text(checkNote.first, color = checkNote.second, fontSize = 11.sp)
+                        }
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(

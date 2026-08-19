@@ -205,7 +205,22 @@ data class Plane(
      * ([skytycoon.core.save.Save] 의 마이그레이션 참고).
      */
     val priceMul: Double = 1.0,
-)
+    /**
+     * 마지막 중정비 이후 쌓인 비행시간. [skytycoon.core.sim.Balance.CHECK_INTERVAL_HOURS]
+     * 를 넘기면 다음 분기에 통째로 뜯어 보느라 뜨지 못한다.
+     */
+    val hoursSinceCheck: Double = 0.0,
+    /**
+     * 마지막 중정비 이후 지난 분기 수. 덜 굴린 기체도 달력으로는 늙는다 —
+     * 이게 없으면 세워 둔 예비기가 영원히 새것이라 정비가 공짜 보험이 된다.
+     */
+    val quartersSinceCheck: Int = 0,
+    /** 이 분기까지 중정비로 묶여 있다 (그 분기에는 배속돼 있어도 뜨지 않는다). */
+    val checkUntilTurn: Int = -1,
+) {
+    /** 이번 분기에 중정비로 묶여 있는가. */
+    fun inCheck(turn: Int) = turn <= checkUntilTurn
+}
 
 /**
  * 진행 중인 공항 확장 공사. 후원사가 공사비를 대고, 완공되면 새 슬롯의 일부를
@@ -277,6 +292,8 @@ data class QuarterResult(
     val fuelCost: Double = 0.0,
     val crewCost: Double = 0.0,
     val maintCost: Double = 0.0,
+    /** 중정비비 — 기체를 통째로 뜯어 보는 값. 노선 정비비와 달리 편수가 아니라 기재에 붙는다. */
+    val checkCost: Double = 0.0,
     val landingCost: Double = 0.0,
     val paxServiceCost: Double = 0.0,
     val distributionCost: Double = 0.0,
@@ -485,6 +502,17 @@ data class GameState(
 
     fun routesOf(airlineId: String) = routes.filter { it.airlineId == airlineId }
     fun planesOf(airlineId: String) = planes.filter { it.airlineId == airlineId }
+
+    /** 이 노선에 배속된 기재 — 중정비로 묶인 기체까지 포함한다 (배속 화면용). */
+    fun assignedTo(routeId: Int) = planes.filter { it.routeId == routeId }
+
+    /**
+     * 그중 **이번 분기에 실제로 뜨는** 기재.
+     *
+     * 좌석·원가·정비시간은 전부 이쪽으로 세야 한다. 한 군데라도 [assignedTo] 를 쓰면
+     * 정비 중인 기체가 손님을 태우거나, 뜨지도 않은 기체의 연료비가 청구된다.
+     */
+    fun flyingOn(routeId: Int) = planes.filter { it.routeId == routeId && !it.inCheck(turn) }
     fun plane(id: Int) = planes.first { it.id == id }
     fun route(id: Int) = routes.first { it.id == id }
 

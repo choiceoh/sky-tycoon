@@ -77,6 +77,11 @@ object Ai {
         val anchor = targetFare(airline.trait)
         for (route in s.routesOf(airlineId)) {
             val last = route.last ?: continue
+            // 못 뜬 분기는 값을 매기는 근거가 못 된다. 좌석이 0 이면 탑승률도 0 으로 잡히는데,
+            // 그걸 "텅 비어서 안 팔렸다"로 읽으면 **뜨지도 않은 분기마다 운임을 깎는다**.
+            // 정비로 한 분기 쉬는 일이 흔해지면서 이 구멍이 노선 운임을 계속 끌어내렸다
+            // (10년 자동조종에서 기업가치가 1397M → 371M). pruneRoutes 와 같은 이유의 방어다.
+            if (last.seats <= 0.0) continue
             val lf = last.loadFactor
             var fare = route.fareMul
             // 만석이면 값을 올리고, 텅 비면 내린다. 실력이 낮은 AI 는 반응이 굼뜨고 잡음이 섞인다.
