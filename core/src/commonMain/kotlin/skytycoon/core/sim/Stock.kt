@@ -244,7 +244,7 @@ object Stock {
                 AircraftCatalog.operableBy(AircraftCatalog[it.typeId], acquirer.home, state.year)
             }
         val voidedIds = voidedOrders.map { it.id }.toSet()
-        val orderRefund = voidedOrders.sumOf { AircraftCatalog[it.typeId].price * it.count }
+        val orderRefund = voidedOrders.sumOf { AircraftCatalog[it.typeId].price * it.priceMul * it.count }
 
         // 인수 대금을 감당 못 하면 그 차액만큼 차입한다. 현금을 마이너스로 두면
         // 다음 분기 결산 전까지 화면에 음수 잔고가 그대로 뜬다.

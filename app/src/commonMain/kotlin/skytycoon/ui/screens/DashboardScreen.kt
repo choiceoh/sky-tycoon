@@ -27,8 +27,10 @@ import androidx.compose.ui.unit.sp
 import skytycoon.core.data.Cities
 import skytycoon.core.model.GameState
 import skytycoon.core.sim.Actions
+import skytycoon.core.sim.Debrief
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Stock
+import skytycoon.core.text.Josa
 import skytycoon.core.sim.TurnEngine
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
@@ -89,6 +91,21 @@ fun DashboardScreen(vm: GameViewModel, wide: Boolean, onGoTo: (Tab) -> Unit) {
                     StatTile("순익", signedMoney(last.net), profitColor(last.net))
                     StatTile("수송객", "${money(last.pax)}명")
                     StatTile("탑승률", percent(last.loadFactor), loadFactorColor(last.loadFactor))
+                }
+                // 결산 대화상자를 닫고 나면 "왜 이렇게 됐나"가 통째로 사라진다. 여기에도 남긴다.
+                // 노선망 이야기는 빼고 금액 줄만 — 이 화면은 노선을 열고 닫은 뒤에도 다시
+                // 그려지므로 근거가 발밑에서 바뀐다. 지금 노선망은 아래 "할 일"이 본다.
+                val debrief = Debrief.lines(s, player, last, limit = 3, includeNetwork = false)
+                if (debrief.isNotEmpty()) {
+                    VSpace(10)
+                    for (line in debrief) {
+                        Text(
+                            "· " + render(line),
+                            color = toneColor(line.tone),
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                        )
+                    }
                 }
             }
         }
@@ -235,7 +252,7 @@ private fun buildAlerts(s: GameState): List<Alert> {
         .maxByOrNull { it.second }
     if (threat != null && threat.second >= 0.10) {
         out += Alert(
-            "${threat.first.name}이 지분 ${percent(threat.second)} 보유",
+            "${threat.first.name}${Josa.subject(threat.first.name)} 지분 ${percent(threat.second)} 보유",
             // 증자가 막혀 있으면 못 하는 수를 권하지 않고 막힌 사유를 그대로 보여준다.
             Actions.issueBlockReason(s, player)
                 ?.let { "50%를 넘기면 회사를 잃습니다. $it" }

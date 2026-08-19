@@ -195,6 +195,16 @@ data class Plane(
      * 최종 순위를 부풀릴 수 있다. 산 값 기준을 기체에 새겨 두면 그 구멍이 막힌다.
      */
     val valueMul: Double = 1.0,
+    /**
+     * 이 기체를 산 **가격 체계**의 배율.
+     *
+     * [valueMul] 과 다른 개념이다. 저쪽은 "정가 대비 얼마에 샀나"(중고 할인)라
+     * 장부·상각에만 걸리지만, 이쪽은 "그때 카탈로그 값이 지금과 얼마나 달랐나"라
+     * 매각가·선급금까지 **값이 걸리는 모든 곳**에 함께 걸린다. 카탈로그 가격을
+     * 재조정해도 이미 산 기체가 소급해서 비싸지지 않게 하는 장치다
+     * ([skytycoon.core.save.Save] 의 마이그레이션 참고).
+     */
+    val priceMul: Double = 1.0,
 )
 
 /**
@@ -221,6 +231,11 @@ data class Order(
     val typeId: String,
     val count: Int,
     val deliverTurn: Int,
+    /**
+     * 발주 시점의 **가격 체계** 배율 ([Plane.priceMul] 참고). 이미 값을 치른 발주가
+     * 카탈로그 재조정 뒤에 선급금·환불·인도 장부가에서 새 가격으로 잡히지 않게 한다.
+     */
+    val priceMul: Double = 1.0,
 )
 
 @Serializable
@@ -282,6 +297,12 @@ data class QuarterResult(
     val cash: Double = 0.0,
     val debt: Double = 0.0,
     val equity: Double = 0.0,
+    /**
+     * 그 분기의 항공유 값. 결산에서 "연료비가 왜 늘었나"를 짚으려면 **지난 분기의
+     * 유가**가 있어야 하는데, 세계 상태는 현재 값만 들고 있어 지나간 값을 되찾을 수 없다.
+     * 0 은 이 필드가 없던 시절의 세이브라는 뜻이라, 읽는 쪽이 원인 지목을 건너뛴다.
+     */
+    val oil: Double = 0.0,
 ) {
     /**
      * 같은 분기 실적을 합친다 (합병 시 프로포마 실적).
@@ -313,6 +334,8 @@ data class QuarterResult(
         cash = cash + o.cash,
         debt = debt + o.debt,
         equity = equity + o.equity,
+        // 유가는 세계 값이라 합치지 않는다 — 두 회사 실적을 더한다고 기름값이 두 배가 되지 않는다.
+        oil = oil,
     )
 
     val totalRevenue get() = revenue + cargoRevenue + businessIncome
@@ -418,6 +441,11 @@ data class Outcome(val won: Boolean, val rank: Int, val reason: String)
 
 @Serializable
 data class GameState(
+    /**
+     * 세이브 형식 버전. 0 은 버전을 새기기 전의 세이브라는 뜻이다
+     * ([skytycoon.core.save.Save.migrate] 가 그걸 보고 옛 규칙을 손본다).
+     */
+    val formatVersion: Int = 0,
     val seed: Int,
     val rngState: Int,
     val scenarioId: String,

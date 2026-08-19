@@ -192,7 +192,7 @@ object Economics {
         // 상각 기준은 **산 값**이다. 정가로 상각하면 정가의 58% 에 사들인 중고기가
         // 남은 수명 동안 정가의 80% 를 비용으로 털어내, 낸 돈보다 훨씬 큰 손실이
         // 순익과 주가를 눌러 앉힌다.
-        .sumOf { AircraftCatalog[it.typeId].price * it.valueMul / Balance.DEPRECIATION_QUARTERS }
+        .sumOf { AircraftCatalog[it.typeId].price * it.priceMul * it.valueMul / Balance.DEPRECIATION_QUARTERS }
 
     /** 회사 유지 간접비. */
     fun overhead(state: GameState, airline: Airline): Double {
@@ -207,7 +207,8 @@ object Economics {
 
     /** 보유 기재의 시장가 합 (잔존가치 기준). */
     fun fleetValue(planes: List<Plane>): Double = planes.sumOf {
-        AircraftCatalog[it.typeId].price * AircraftCatalog.residualRatio(it.ageQuarters) * it.valueMul
+        AircraftCatalog[it.typeId].price * it.priceMul *
+            AircraftCatalog.residualRatio(it.ageQuarters) * it.valueMul
     }
 
     /** 슬롯 1개 매입가 — 남은 슬롯이 적을수록 급등한다. */
@@ -275,7 +276,7 @@ object Economics {
         // 대형 발주 한 번에 자기자본이 무너져 차입 한도가 깎이고 자본잠식으로 오인된다.
         val prepaid = state.orders
             .filter { it.airlineId == airline.id }
-            .sumOf { AircraftCatalog[it.typeId].price * it.count }
+            .sumOf { AircraftCatalog[it.typeId].price * it.priceMul * it.count }
         return airline.cash + fleet + slots + biz + stocks + prepaid - airline.debt
     }
 }

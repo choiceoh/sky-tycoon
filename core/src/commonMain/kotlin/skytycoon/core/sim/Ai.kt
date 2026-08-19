@@ -366,10 +366,12 @@ object Ai {
             if (budget <= 0) break
 
             val served = s.routesOf(airlineId).map { Geo.pairKey(it.from, it.to) }.toSet()
-            // 슬롯을 이미 가진 도시가 출발 거점. 많이 가진 순으로 몇 곳만 본다.
+            // 슬롯을 가진 도시는 **전부** 출발 거점이다. 예전에는 많이 가진 순으로 여덟
+            // 곳만 봤는데, 후반이면 회사가 스물네 개 도시에 슬롯을 쥐고 있어 제 노선망의
+            // 3분의 2가 탐색에서 빠졌다. 그 여덟 곳에서 갈 만한 짝이 소진되는 순간
+            // 노선망이 통째로 굳어, 20년 캠페인의 마지막 5년 동안 노선 수가 한 자리도
+            // 움직이지 않은 채 현금(자본의 78%)과 유휴기만 쌓였다 — 판이 얼어붙는다.
             val origins = airline.slots.filterValues { it > 0 }.keys
-                .sortedByDescending { airline.slotsAt(it) }
-                .take(8)
 
             var best: Candidate? = null
             for (fromId in origins) {
@@ -574,25 +576,46 @@ object Ai {
      * 지분 매집. 아무나 노리지 않는다 — 실적이 무너졌거나 자기보다 한참 작은 회사만 사냥한다.
      * 그리고 자기가 사냥당하는 중이면 먼저 유상증자로 방어한다.
      */
+    /** 이만큼 쌓았으면 인수전에 발을 담근 것으로 본다 — 그 뒤로는 매 분기 밀어붙인다. */
+    private const val COMMITTED_STAKE = 0.15
+
     private fun stockMoves(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {
         var s = defendOwnership(state, airlineId)
         val a = s.airline(airlineId)
-        if (a.trait != Trait.EXPAND && !rng.chance(0.25)) return s
+        // 이미 발을 담근 인수전은 성향과 무관하게 매 분기 밀어붙인다. 넉 분기에 한 번씩만
+        // 사들이면 그사이 방어측이 증자로 30% 를 희석해(4분기 쿨다운) 매집분이 그대로
+        // 상쇄된다 — 지분이 3분의 1 언저리에서 굳고 20년을 굴려도 인수가 한 건도 나지
+        // 않았다. 한번 시작했으면 몰아쳐야 과반에 닿는다.
+        val committed = s.livingAirlines.any {
+            it.id != airlineId && Stock.ownershipRatio(s, airlineId, it.id) >= COMMITTED_STAKE
+        }
+        if (a.trait != Trait.EXPAND && !committed && !rng.chance(0.25)) return s
 
         val warChest = a.cash - 400e6 * s.world.inflation
         if (warChest <= 0) return s
         val myEquity = Economics.equity(s, a)
 
-        val target = s.livingAirlines
+        val candidates = s.livingAirlines
             .filter { it.id != airlineId }
             .filter { rival ->
+                // 이미 지분을 쌓아 둔 상대는 조건을 다시 묻지 않는다. 공격받던 회사가
+                // 실적을 회복하거나 몸집을 불리면 후보에서 빠지는데, 그러면 여태 모은
+                // 지분을 든 채 다른 회사로 갈아타게 된다 — 매 분기 밀어붙이기로 바꾼
+                // 의미가 바로 그 상황에서 사라진다.
+                if (Stock.ownershipRatio(s, airlineId, rival.id) >= COMMITTED_STAKE) return@filter true
                 val equity = Economics.equity(s, rival)
                 val ailing = rival.results.takeLast(4).sumOf { r -> r.net } < 0
                 // 휘청이는 회사이거나, 내가 두 배 가까이 크면 삼킬 만하다.
                 // 3배로 두면 후보가 거의 안 잡혀 인수가 영영 안 일어난다.
                 ailing || myEquity > equity * 1.8
             }
-            .minByOrNull { Economics.equity(s, it) } ?: return s
+        // 쌓아 둔 지분이 있으면 그 상대를 끝까지 판다. 분기마다 더 작은 회사로 갈아타면
+        // 어느 쪽도 과반에 못 닿고 현금만 여러 회사에 흩어진다.
+        val target = candidates
+            .maxByOrNull { Stock.ownershipRatio(s, airlineId, it.id) }
+            ?.takeIf { Stock.ownershipRatio(s, airlineId, it.id) >= COMMITTED_STAKE }
+            ?: candidates.minByOrNull { Economics.equity(s, it) }
+            ?: return s
 
         val limit = Stock.maxBuyableThisQuarter(s, airlineId, target.id)
         if (limit <= 0) return s

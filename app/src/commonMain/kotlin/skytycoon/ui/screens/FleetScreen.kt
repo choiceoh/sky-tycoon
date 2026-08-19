@@ -128,7 +128,7 @@ private fun OwnedFleet(vm: GameViewModel, modifier: Modifier) {
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            moneyShort(Actions.sellPrice(t, plane.ageQuarters)),
+                            moneyShort(Actions.sellPrice(t, plane.ageQuarters, plane.priceMul)),
                             color = TextMid,
                             fontSize = 11.sp,
                         )

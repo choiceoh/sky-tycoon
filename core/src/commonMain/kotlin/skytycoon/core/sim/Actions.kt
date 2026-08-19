@@ -507,8 +507,12 @@ object Actions {
     fun usedPrice(state: GameState, typeId: String): Double =
         usedPrice(AircraftCatalog[typeId], usedAge(state, typeId))
 
-    fun sellPrice(type: AircraftType, ageQuarters: Int): Double =
-        type.price * AircraftCatalog.residualRatio(ageQuarters) * Balance.SELL_PENALTY
+    /**
+     * @param priceMul 그 기체를 산 가격 체계 ([skytycoon.core.model.Plane.priceMul]).
+     *   빠뜨리면 카탈로그를 재조정한 순간 옛 세이브의 기체를 **산 값보다 비싸게** 팔 수 있다.
+     */
+    fun sellPrice(type: AircraftType, ageQuarters: Int, priceMul: Double = 1.0): Double =
+        type.price * priceMul * AircraftCatalog.residualRatio(ageQuarters) * Balance.SELL_PENALTY
 
     private fun buyAircraft(state: GameState, airline: Airline, cmd: Command.BuyAircraft): ActionResult {
         if (cmd.count < 1) return ActionResult.fail(state, "1대 이상 발주해야 합니다.")
@@ -584,7 +588,7 @@ object Actions {
             ?: return ActionResult.fail(state, "보유하지 않은 기재입니다.")
         if (plane.routeId != null) return ActionResult.fail(state, "노선에 배속된 기재는 먼저 배속을 풀어야 합니다.")
         val type = AircraftCatalog[plane.typeId]
-        val proceeds = sellPrice(type, plane.ageQuarters)
+        val proceeds = sellPrice(type, plane.ageQuarters, plane.priceMul)
         val next = state
             .copy(planes = state.planes.filter { it.id != plane.id })
             .withAirline(airline.id) { it.copy(cash = it.cash + proceeds) }
