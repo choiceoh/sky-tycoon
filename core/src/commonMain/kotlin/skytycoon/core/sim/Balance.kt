@@ -157,8 +157,14 @@ object Balance {
      *
      * 현실의 운임도 같은 이유로 단거리 km 당 단가가 훨씬 비싸다. 고정 몫을 키우고
      * km 단가를 낮춰, 장거리 운임은 그대로 두면서 단거리만 제 원가를 싣게 했다.
+     *
+     * 40 → 48 은 화물을 제대로 푼 뒤의 조정이다. 예전의 "화물매출 = 여객매출 × 13%"
+     * 는 **단거리에도 없는 화물을 얹어 주고 있었다** — 실제 협동체 단거리 벨리는
+     * 매출의 1~3% 뿐이다. 그 가짜 보조를 걷어내니 런던–파리가 최선 편수에서도
+     * 마진 5% 로 주저앉았다. 없던 화물 대신 **제값을 받게** 해서 메운다.
+     * 이 손잡이는 거리에 안 붙어 장거리 운임은 거의 그대로다 (11,000km 노선 +1.6%).
      */
-    const val FARE_BASE = 40.0
+    const val FARE_BASE = 48.0
     const val FARE_PER_KM = 0.0275
     const val FARE_DIST_EXP = 1.02
     /** 비즈니스/퍼스트가 섞여 생기는 수익 가산 (이코노미 좌석에 앉은 출장객) */
@@ -314,7 +320,38 @@ object Balance {
 
     /** 규모 한 단위가 값에 얹히는 정도. */
     const val PLANE_PRICE_SLOPE = 0.75
-    const val CARGO_RATE = 0.13
+    // --- 화물 ---
+    // 예전에는 화물매출 = 여객매출 × 0.13 이라는 한 줄이었다. 기종을 바꾸든 노선을
+    // 바꾸든 화물이 똑같은 비율로 따라와, 화물이 어떤 판단에도 끼어들지 않았다.
+    // 이제 수요·적재량·빈자리 셋으로 갈라 [skytycoon.core.sim.Cargo] 가 푼다.
+
+    /** 화물 수요의 눈금 (분기 톤). 무역량이 곧 수요라 [City.standing] 두 개의 곱에 붙는다. */
+    const val CARGO_K = 30.0
+
+    /** 두 도시 경제 규모의 곱에 걸리는 지수. 1 보다 작아 큰 도시끼리도 무한히 커지지 않는다. */
+    const val CARGO_TRADE_EXP = 0.62
+
+    /** 이 거리까지는 트럭·철도와 다툰다 — 그 아래로는 항공 화물이 잘 안 붙는다. */
+    const val CARGO_DIST_REF = 2_500.0
+    const val CARGO_DIST_EXP = 0.85
+
+    /** 모델 안의 항공사가 가져갈 수 있는 몫. 나머지는 화물 전용사와 해운이 가져간다. */
+    const val CARGO_ADDRESSABLE = 0.55
+
+    /** 좌석 한 자리당 벨리 적재량 (톤) — 협동체 기준. */
+    const val CARGO_TONS_PER_SEAT = 0.022
+
+    /** 광동체는 컨테이너가 들어가 서너 배를 싣는다. */
+    const val CARGO_TONS_PER_SEAT_WIDE = 0.055
+
+    /** 만석일 때 손님 짐이 먹는 벨리 비율. 여객이 꽉 찬 노선은 화물을 실을 자리가 없다. */
+    const val CARGO_BAGGAGE_SHARE = 0.55
+
+    /** 톤·km 단가 (물가 1.0 기준). */
+    const val CARGO_YIELD_PER_TON_KM = 0.62
+
+    /** 거리가 멀수록 톤·km 단가는 떨어진다. */
+    const val CARGO_YIELD_DIST_EXP = 0.82
     const val TAX_RATE = 0.40
     /** 기령 1분기마다 정비비가 이만큼씩 붙는다 */
     const val AGE_MAINT_PER_QUARTER = 0.012

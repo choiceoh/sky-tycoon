@@ -37,6 +37,7 @@ import skytycoon.core.data.AircraftCatalog
 import skytycoon.core.data.Cities
 import skytycoon.core.model.GameState
 import skytycoon.core.model.Route
+import skytycoon.core.sim.Cargo
 import skytycoon.core.sim.Command
 import skytycoon.core.sim.Maintenance
 import skytycoon.core.sim.Economics
@@ -55,6 +56,7 @@ import skytycoon.ui.components.Panel
 import skytycoon.ui.components.RatioBar
 import skytycoon.ui.components.VSpace
 import skytycoon.ui.decimals
+import skytycoon.ui.grouped
 import skytycoon.ui.km
 import skytycoon.ui.loadFactorColor
 import skytycoon.ui.moneyShort
@@ -195,6 +197,15 @@ private fun RouteDetail(vm: GameViewModel, route: Route) {
                 // 환승으로 꽉 찬 노선이 점유율만 낮게 보여 읽는 사람이 헷갈린다.
                 KeyValue("로컬 점유율", percent(r.share))
                 KeyValue("매출", moneyShort(r.revenue))
+                // 화물은 기종·거리·빈자리로 갈린다. 매출 안에 묻어 두면 광동체를 붙일
+                // 이유 하나가 화면에서 통째로 사라진다.
+                val cargoTons = Cargo.routeCapacityTons(s, route.id)
+                if (cargoTons > 0.0) {
+                    KeyValue(
+                        "  화물 적재 여력",
+                        "${grouped(cargoTons.toLong())}t / 구간 수요 ${grouped(Cargo.demandTons(s, route.from, route.to).toLong())}t",
+                    )
+                }
                 // 원가에는 이 노선이 물고 있는 슬롯의 분기 임차료가 들어 있다.
                 KeyValue("원가 (임차료 포함)", moneyShort(r.cost))
                 KeyValue("손익", signedMoney(r.profit), profitColor(r.profit))

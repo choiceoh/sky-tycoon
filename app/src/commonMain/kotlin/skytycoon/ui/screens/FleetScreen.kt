@@ -31,6 +31,7 @@ import skytycoon.core.data.Cities
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Balance
 import skytycoon.core.sim.Command
+import skytycoon.core.sim.Cargo
 import skytycoon.core.sim.Leasing
 import skytycoon.core.sim.Maintenance
 import skytycoon.ui.Amber
@@ -261,6 +262,14 @@ private fun AircraftMarket(vm: GameViewModel, modifier: Modifier) {
                             if (usedMode) " · 기령 ${Actions.usedAge(s, t.id) / 4}년" else "",
                         color = TextMid,
                         fontSize = 11.sp,
+                    )
+                    // 화물 적재량은 좌석 수로 짐작할 수 없다 (광동체냐 아니냐가 정한다).
+                    // 안 보여주면 장거리 무역로에 광동체를 붙일 이유 하나가 숨는다.
+                    Text(
+                        if (t.widebody) "광동체 · 편당 화물 ${decimals(Cargo.bellyTons(t), 1)}t"
+                        else "협동체 · 편당 화물 ${decimals(Cargo.bellyTons(t), 1)}t",
+                        color = if (t.widebody) Mint else TextLow,
+                        fontSize = 10.sp,
                     )
                     VSpace(6)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

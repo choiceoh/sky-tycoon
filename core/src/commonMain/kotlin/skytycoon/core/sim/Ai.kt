@@ -589,8 +589,12 @@ object Ai {
             val room = (Actions.debtCapacity(s, a) - a.debt).coerceAtLeast(0.0)
             val need = (floor * 3 - a.cash).coerceAtMost(room)
             if (need > 1e6) s = cmd(s, Command.Loan(airlineId, need))
-        } else if (a.debt > 0 && a.cash > floor * 8) {
-            val repay = minOf(a.debt, a.cash - floor * 6)
+        } else if (a.debt > 0 && a.cash > floor * 4) {
+            // 예전에는 현금이 운영 바닥의 8배는 쌓여야 갚기 시작했다. 그래서 빚을 지고
+            // 나면 캠페인 내내 이자만 물었다 — 12판 중 기업가치가 줄어든 두 판이 모두
+            // 부채 최상위였다 (GrowthDiag). 정비·리스로 고정비가 늘어난 뒤로는 그
+            // 이자가 더 무겁다. 여유가 생기는 대로 갚되, 운영 현금은 남긴다.
+            val repay = minOf(a.debt, a.cash - floor * 3)
             if (repay > 1e6) s = cmd(s, Command.Loan(airlineId, -repay))
         }
         return s

@@ -41,7 +41,8 @@ object TurnEngine {
         s = liquidateOrphanBusinesses(s)
 
         val outcomes = Market.resolveAll(s)
-        s = settle(s, outcomes)
+        // 화물은 여객이 풀린 뒤에 푼다 — 남은 빈자리가 얼마인지 알아야 실을 양이 정해진다.
+        s = settle(s, outcomes, Cargo.resolveAll(s, outcomes))
 
         s = ageFleet(s)
         s = returnExpiredLeases(s)
@@ -68,7 +69,11 @@ object TurnEngine {
 
     // --------------------------------------------------------------- 결산
 
-    private fun settle(state: GameState, outcomes: Map<Int, RouteOutcome>): GameState {
+    private fun settle(
+        state: GameState,
+        outcomes: Map<Int, RouteOutcome>,
+        cargoRevenues: Map<Int, Double>,
+    ): GameState {
         var s = state
         val routeResults = HashMap<Int, RouteResult>()
 
@@ -96,7 +101,7 @@ object TurnEngine {
                 val cap = Economics.capacity(onRoute, dist)
                 val effective = route.copy(freq = route.freq.coerceAtMost(cap.maxFreq))
 
-                val cargo = outcome.revenue * Balance.CARGO_RATE
+                val cargo = cargoRevenues[route.id] ?: 0.0
                 val gross = outcome.revenue + cargo
                 val rc = Economics.routeCost(s, airline, effective, onRoute, outcome.pax, gross, outcome.bizCabinPax, outcome.bizSeatsOffered)
 

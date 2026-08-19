@@ -7,6 +7,7 @@ import skytycoon.core.model.GameState
 import skytycoon.core.model.Plane
 import skytycoon.core.model.Route
 import skytycoon.core.sim.Balance
+import skytycoon.core.sim.Cargo
 import skytycoon.core.sim.Economics
 import skytycoon.core.sim.Geo
 import skytycoon.core.sim.Market
@@ -79,8 +80,9 @@ class CabinTest {
             },
         )
         val route = s.routes.first()
-        val o = Market.resolvePair(s, Cities[from], Cities[to], s.routes).first()
-        val gross = o.revenue * (1 + Balance.CARGO_RATE)
+        val outs = Market.resolvePair(s, Cities[from], Cities[to], s.routes)
+        val o = outs.first()
+        val gross = o.revenue + Cargo.revenueFor(s, route.id, outs.associateBy { it.routeId })
         val direct = Economics
             .routeCost(s, s.airline("hanseong"), route, s.planes, o.pax, gross, o.bizCabinPax, o.bizSeatsOffered)
             .total
