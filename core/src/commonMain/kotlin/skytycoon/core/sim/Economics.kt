@@ -218,7 +218,9 @@ object Economics {
      * 기령을 안 보면 다 상각된 기재가 영원히 비용을 만들어 순익과 주가를 눌러 앉힌다.
      */
     fun depreciation(planes: List<Plane>): Double = planes
-        .filter { it.ageQuarters < Balance.DEPRECIATION_QUARTERS }
+        // 빌린 기체는 상각하지 않는다 — 내 자산이 아니고, 대신 리스료가 나간다.
+        // 둘 다 잡으면 같은 기체값을 두 번 비용으로 터는 셈이다.
+        .filter { !it.leased && it.ageQuarters < Balance.DEPRECIATION_QUARTERS }
         // 상각 기준은 **산 값**이다. 정가로 상각하면 정가의 58% 에 사들인 중고기가
         // 남은 수명 동안 정가의 80% 를 비용으로 털어내, 낸 돈보다 훨씬 큰 손실이
         // 순익과 주가를 눌러 앉힌다.
@@ -235,8 +237,13 @@ object Economics {
         return (base + serviceOpex) * state.world.inflation * Difficulties[state.difficultyId].costMul
     }
 
-    /** 보유 기재의 시장가 합 (잔존가치 기준). */
-    fun fleetValue(planes: List<Plane>): Double = planes.sumOf {
+    /**
+     * **소유한** 기재의 시장가 합 (잔존가치 기준).
+     *
+     * 리스기는 빠진다. 넣으면 목돈 한 푼 없이 자기자본을 부풀려 차입 한도와 최종 순위를
+     * 살 수 있다 — 중고기 장부가에서 이미 한 번 막았던 것과 같은 구멍이다.
+     */
+    fun fleetValue(planes: List<Plane>): Double = planes.filter { !it.leased }.sumOf {
         AircraftCatalog[it.typeId].price * it.priceMul *
             AircraftCatalog.residualRatio(it.ageQuarters) * it.valueMul
     }

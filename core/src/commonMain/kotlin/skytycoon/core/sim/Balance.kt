@@ -335,10 +335,10 @@ object Balance {
     // 기단의 3% 만 정비 중이었다 — 있으나 마나였다 (FleetProbe 로 측정).
 
     /** 중정비 사이의 비행시간. 만가동에 가까운 기체는 이쪽이 먼저 걸린다. */
-    const val CHECK_INTERVAL_HOURS = 6_500.0
+    const val CHECK_INTERVAL_HOURS = 10_000.0
 
-    /** 덜 굴린 기체라도 이 분기 수를 넘기면 들어간다 (3년). */
-    const val CHECK_MAX_QUARTERS = 12
+    /** 덜 굴린 기체라도 이 분기 수를 넘기면 들어간다 (5년). */
+    const val CHECK_MAX_QUARTERS = 20
 
     /** 기령 1분기마다 점검 주기가 이만큼씩 짧아진다 (15년 된 기체는 1.5배 자주 들어간다). */
     const val CHECK_INTERVAL_AGE_DECAY = 0.0055
@@ -355,7 +355,7 @@ object Balance {
      * 몇 분기에 한 번 **몰아서** 나가는 돈이라, 평탄한 손익에 굴곡을 만드는 몇 안 되는
      * 항목이다 (기재당 간접비처럼 매분기 고르게 나가는 고정비는 단거리부터 죽인다).
      */
-    const val CHECK_COST_RATE = 0.045
+    const val CHECK_COST_RATE = 0.060
 
     /** 기령 1분기마다 중정비비가 이만큼씩 비싸진다 (늙은 기체는 뜯을 데가 많다). */
     const val CHECK_COST_AGE_SLOPE = 0.020
@@ -369,6 +369,29 @@ object Balance {
     const val USED_PRICE_MUL = 0.72
     const val SELL_PENALTY = 0.62
     const val ORDER_DELAY_QUARTERS = 2
+
+    // --- 리스 ---
+    // 기재를 갖는 길이 "현금으로 사거나 빚내서 사거나" 둘뿐이면, 자본 조달은 사실상
+    // 한 축짜리다. 운용리스는 다른 축을 연다 — **자본을 안 쓰는 대신 고정비를 진다**.
+    //
+    // 사는 쪽이 총액으로는 싸다 (6년 리스료가 기체값의 67%, 같은 기간 상각은 40%).
+    // 대신 리스는 목돈이 필요 없고 인도가 즉시라, 슬롯이 열렸을 때 바로 붙일 수 있다.
+    // 대가는 경기가 꺾여도 줄지 않는 분기 고정비다 — 불황에 물리는 쪽이 여기다.
+
+    /** 분기 리스료 (기체값 대비). 실물 시장의 월 0.9% 안팎을 분기로 환산한 값. */
+    const val LEASE_RATE_PER_QUARTER = 0.028
+
+    /** 고를 수 있는 계약 기간 (분기). */
+    val LEASE_TERMS = intArrayOf(8, 16, 24)
+
+    /** 짧게 빌릴수록 분기 요율이 비싸다 — 가장 긴 계약이 기준(0 할증)이다. */
+    const val LEASE_SHORT_TERM_PREMIUM = 0.35
+
+    /** 중도 반납 위약금 — 남은 기간과 이 분기 수 중 짧은 쪽의 리스료. */
+    const val LEASE_BREAK_QUARTERS = 4
+
+    /** 한 회사가 동시에 굴릴 수 있는 리스기 비율 (보유 기단 대비). */
+    const val LEASE_FLEET_SHARE_MAX = 0.6
 
     // --- 슬롯 ---
     /**
@@ -497,4 +520,7 @@ object Balance {
     const val AI_CASH_FLOOR = 40e6
     const val AI_MAX_NEW_ROUTES = 3
     const val AI_MAX_ORDERS = 3
+
+    /** AI 가 리스료로 감당하겠다고 보는 매출 대비 한도 — 이보다 무거우면 안 빌린다. */
+    const val AI_LEASE_REVENUE_SHARE = 0.05
 }

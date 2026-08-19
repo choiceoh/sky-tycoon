@@ -189,6 +189,8 @@ object Debrief {
             "광고비" to current.adSpend - previous.adSpend,
             "본사 간접비" to current.overhead - previous.overhead,
             "감가상각" to current.depreciation - previous.depreciation,
+            // 리스는 계약이 시작·만료될 때 계단처럼 움직인다 — 순익이 왜 꺾였는지의 원인이 된다.
+            "리스료" to current.leaseCost - previous.leaseCost,
             // 객실·서비스 등급을 손대면 여기가 먼저 움직인다. 빼 두면 순익이 왜 깎였는지
             // 가장 큰 원인이 통째로 빠진 채 해설이 나간다.
             "기내 서비스비" to current.paxServiceCost - previous.paxServiceCost,

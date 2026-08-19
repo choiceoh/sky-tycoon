@@ -45,6 +45,9 @@ object Ai {
         s = growFrequency(s, airlineId)
         s = upgauge(s, airlineId, skill)
         s = manageFleet(s, airlineId, rng, skill)
+        // 발주(2분기)를 기다릴 수 없는 자리를 리스로 메운다 — manageFleet 이 유휴기를
+        // 다 쓰고 난 뒤라야 "정말 없는지"가 판가름 난다.
+        s = leaseForUrgentCapacity(s, airlineId, rng, skill)
         s = manageSlots(s, airlineId, rng, skill)
         s = expandAirports(s, airlineId, skill)
         s = openRoutes(s, airlineId, rng, skill)
@@ -224,7 +227,8 @@ object Ai {
             if (idleBigger != null) {
                 val swapped = current.planeIds - smallest.id + idleBigger.id
                 s = cmd(s, Command.AssignPlanes(airlineId, current.id, swapped))
-                s = cmd(s, Command.SellAircraft(airlineId, smallest.id))
+                // 빌린 기체는 못 판다. 실패해도 상태는 그대로라 그냥 세워 두게 된다.
+                if (!smallest.leased) s = cmd(s, Command.SellAircraft(airlineId, smallest.id))
                 continue
             }
 
@@ -260,13 +264,53 @@ object Ai {
         }
     }
 
+    /**
+     * 지금 당장 붙일 기체가 없을 때 빌린다.
+     *
+     * 리스의 값어치는 "돈이 없을 때"만이 아니라 **"기다릴 수 없을 때"**에도 있다.
+     * 발주는 두 분기 뒤에나 오는데 슬롯과 손님은 이번 분기에 있다. 현금이 두둑한
+     * 회사도 그 두 분기를 사려고 리스를 쓴다 — 이 경로가 없으면 AI 는 현금이 마를
+     * 때만 빌리는데, 실제 판에서 AI 는 늘 현금이 남아 리스를 한 번도 안 쓴다
+     * (FleetProbe 로 확인: 리스 비중 0.0%).
+     */
+    private fun leaseForUrgentCapacity(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {
+        val s = state
+        val airline = s.airline(airlineId)
+        if (Leasing.leaseRoom(s, airline) < 1) return s
+        val idle = s.planesOf(airlineId).filter { it.routeId == null }
+
+        // 좌석이 모자란 노선이 실제로 있고, 편수를 더 넣을 슬롯도 남아 있어야 한다.
+        // **그 거리를 날 수 있는 유휴기가 없을 때**만 빌린다 — "유휴기가 하나도 없을 때"로
+        // 재면 안 된다. 항속거리가 모자라 못 쓰는 기체가 늘 몇 대 세워져 있어서
+        // (기단의 15%), 그 조건으로는 리스가 한 번도 안 걸린다.
+        val bursting = s.routesOf(airlineId).firstOrNull { r ->
+            if ((r.last?.loadFactor ?: 0.0) <= 0.88) return@firstOrNull false
+            if (minOf(s.freeSlots(airlineId, r.from), s.freeSlots(airlineId, r.to)) <= 0) return@firstOrNull false
+            val d = Geo.distance(r.from, r.to)
+            idle.none { Economics.canFly(AircraftCatalog[it.typeId], d) }
+        } ?: return s
+
+        val dist = Geo.distance(bursting.from, bursting.to)
+        val type = AircraftCatalog.newFor(s.year, airline.home)
+            .filter { Economics.canFly(it, dist) }
+            .maxByOrNull { it.seats } ?: return s
+
+        val term = Balance.LEASE_TERMS.max()
+        if (!Actions.arrivesBeforeEnd(s, term)) return s
+        val revenue = airline.lastResult?.totalRevenue ?: 0.0
+        if (revenue <= 0 || Leasing.quarterlyRate(type, term) > revenue * Balance.AI_LEASE_REVENUE_SHARE) return s
+        if (!rng.chance(0.5 * skill)) return s
+
+        return cmd(s, Command.LeaseAircraft(airlineId, type.id, 1, term))
+    }
+
     private fun manageFleet(state: GameState, airlineId: String, rng: Rng, skill: Double): GameState {
         var s = state
         val airline = s.airline(airlineId)
         val planes = s.planesOf(airlineId)
 
-        // 25년 넘은 기재는 정리한다.
-        for (p in planes.filter { it.routeId == null && it.ageQuarters > 100 }) {
+        // 25년 넘은 기재는 정리한다 (리스기는 팔 수 없다 — 기간이 끝나면 알아서 돌아간다).
+        for (p in planes.filter { it.routeId == null && !it.leased && it.ageQuarters > 100 }) {
             s = cmd(s, Command.SellAircraft(airlineId, p.id))
         }
 
@@ -285,8 +329,36 @@ object Ai {
         val affordable = ((cash - Balance.AI_CASH_FLOOR * s.world.inflation) / type.price).toInt()
         val want = (affordable.coerceAtMost(Balance.AI_MAX_ORDERS) * aggression).toInt()
         if (want >= 1) {
+            // 확장형·저가형은 기재를 **빌려서** 늘린다. 현금을 슬롯과 노선에 남겨 두고
+            // 두 분기를 기다리지 않는 쪽을 고르는 성향이다 (실제 저비용 항공사가 그렇다).
+            // 이 경로가 없으면 AI 는 늘 현금이 남아 리스를 한 번도 쓰지 않는다.
+            val leaser = airline.trait == Trait.EXPAND || airline.trait == Trait.VALUE
+            val term = Balance.LEASE_TERMS.max()
+            val room = Leasing.leaseRoom(s, s.airline(airlineId))
+            val revenue = s.airline(airlineId).lastResult?.totalRevenue ?: 0.0
+            val rentOk = revenue > 0 &&
+                Leasing.quarterlyRate(type, term) <= revenue * Balance.AI_LEASE_REVENUE_SHARE
+            if (leaser && room >= 1 && rentOk && Actions.arrivesBeforeEnd(s, term) && rng.chance(0.45 * skill)) {
+                return cmd(s, Command.LeaseAircraft(airlineId, type.id, minOf(want, room, 2), term))
+            }
             s = cmd(s, Command.BuyAircraft(airlineId, type.id, want.coerceAtMost(Balance.AI_MAX_ORDERS)))
-        } else if (affordable < 1 && rng.chance(0.3 * skill)) {
+            return s
+        }
+        if (affordable >= 1) return s
+
+        // 살 돈이 없다고 손을 놓지는 않는다 — 빌리는 길이 있다. 목돈 대신 분기 고정비를
+        // 지는 선택이라, 매출에 견줘 리스료가 감당할 만할 때만 손을 댄다. 플레이어에게만
+        // 열린 수단이면 경쟁사는 현금이 마르는 순간 성장이 멈춰 판이 굳는다.
+        val term = Balance.LEASE_TERMS.max()
+        val rate = Leasing.quarterlyRate(type, term)
+        val revenue = s.airline(airlineId).lastResult?.totalRevenue ?: 0.0
+        val canCarry = revenue > 0 && rate <= revenue * Balance.AI_LEASE_REVENUE_SHARE
+        if (canCarry && Leasing.leaseRoom(s, s.airline(airlineId)) >= 1 &&
+            Actions.arrivesBeforeEnd(s, term) && rng.chance(0.4 * skill * aggression)
+        ) {
+            return cmd(s, Command.LeaseAircraft(airlineId, type.id, 1, term))
+        }
+        if (rng.chance(0.3 * skill)) {
             // 신조기가 부담되면 중고를 노린다.
             val used = AircraftCatalog.usedFor(s.year, s.airline(airlineId).home)
                 .filter { Economics.canFly(it, 2000.0) }

@@ -95,6 +95,7 @@ fun QuarterReportDialog(vm: GameViewModel, report: QuarterResult, onDismiss: () 
                 KeyValue("슬롯 임차료", moneyShort(report.slotRent))
                 KeyValue("광고", moneyShort(report.adSpend))
                 KeyValue("감가상각", moneyShort(report.depreciation))
+                if (report.leaseCost > 0) KeyValue("리스료", moneyShort(report.leaseCost))
                 KeyValue("이자", moneyShort(report.interestCost))
                 if (report.extraordinaryCost > 0) {
                     KeyValue("일시 비용(파업 등)", moneyShort(report.extraordinaryCost))

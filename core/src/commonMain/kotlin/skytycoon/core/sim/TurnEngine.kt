@@ -44,6 +44,7 @@ object TurnEngine {
         s = settle(s, outcomes)
 
         s = ageFleet(s)
+        s = returnExpiredLeases(s)
         s = deliverOrders(s)
         s = deliverExpansions(s)
         s = updateBrandAndSafety(s)
@@ -127,6 +128,8 @@ object TurnEngine {
 
             val extraordinary = airline.pendingCharges
             val checkCost = Maintenance.quarterlyCheckCost(s, airline)
+            // 리스료는 뜨든 세워 두든, 경기가 좋든 나쁘든 그대로 나간다 — 고정비의 정의다.
+            val leaseCost = Leasing.quarterlyCost(s, airline.id)
             val overhead = Economics.overhead(s, airline)
             // 슬롯은 임차라 매 분기 나간다 — 놀리는 슬롯도 그대로 청구된다.
             val slotRent = Economics.slotRentTotal(s, airline)
@@ -138,7 +141,7 @@ object TurnEngine {
 
             val revenue = passengerRevenue + cargoRevenue + businessIncome
             val pretax = revenue - cost.total - overhead - slotRent -
-                depreciation - adSpend - interestCost - extraordinary - checkCost
+                depreciation - adSpend - interestCost - extraordinary - checkCost - leaseCost
             val tax = if (pretax > 0) pretax * Balance.TAX_RATE else 0.0
             val net = pretax - tax
             // 감가상각은 현금이 나가지 않는다.
@@ -153,6 +156,7 @@ object TurnEngine {
                 crewCost = cost.crew,
                 maintCost = cost.maint,
                 checkCost = checkCost,
+                leaseCost = leaseCost,
                 landingCost = cost.landing + cost.nav,
                 paxServiceCost = cost.paxService,
                 distributionCost = cost.distribution,
@@ -364,6 +368,30 @@ object TurnEngine {
         )
     }
 
+    /**
+     * 계약이 끝난 리스기를 돌려보낸다.
+     *
+     * 결산이 끝난 뒤에 뺀다 — 이번 분기는 태우고 리스료도 냈으니 매출·원가에 온전히
+     * 잡혀야 한다. 다음 분기부터 그 자리가 빈다.
+     */
+    private fun returnExpiredLeases(state: GameState): GameState {
+        val (next, returned) = Leasing.returnExpired(state)
+        if (returned.isEmpty()) return state
+        val mine = returned.filter { it.airlineId == state.playerId }
+        if (mine.isEmpty()) return next
+        val names = mine.map { AircraftCatalog[it.typeId].name }.distinct().take(3).joinToString(", ")
+        val onRoute = mine.count { it.routeId != null }
+        return next.copy(
+            news = next.news + NewsItem(
+                turn = state.turn,
+                kind = NewsKind.PLAYER,
+                headline = "리스 만료 ${mine.size}대 반납",
+                body = "$names 계약이 끝나 돌려보냈습니다" +
+                    if (onRoute > 0) " — ${onRoute}대가 노선에서 빠졌습니다." else ".",
+            ),
+        )
+    }
+
     /** 정비로 편수가 깎이는 일은 미리 알아야 손을 쓸 수 있다. */
     private fun checkNews(state: GameState): List<NewsItem> {
         val mine = Maintenance.inCheckThisQuarter(state, state.playerId)
@@ -427,8 +455,9 @@ object TurnEngine {
                 }
             }
             if (a.cash < 0) {
-                // 유휴 기재를 오래된 것부터 판다.
-                val idle = s.planesOf(a.id).filter { it.routeId == null }
+                // 유휴 기재를 오래된 것부터 판다. 리스기는 남의 것이라 팔 수 없다 —
+                // 빼먹으면 현금이 마른 회사가 빌린 기체를 팔아 연명한다.
+                val idle = s.planesOf(a.id).filter { it.routeId == null && !it.leased }
                     .sortedByDescending { it.ageQuarters }
                 for (p in idle) {
                     if (a.cash >= 0) break

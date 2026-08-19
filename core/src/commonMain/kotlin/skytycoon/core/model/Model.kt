@@ -217,9 +217,22 @@ data class Plane(
     val quartersSinceCheck: Int = 0,
     /** 이 분기까지 중정비로 묶여 있다 (그 분기에는 배속돼 있어도 뜨지 않는다). */
     val checkUntilTurn: Int = -1,
+    /**
+     * 운용리스로 빌린 기체라면 반납 분기. `null` 이면 소유기다.
+     *
+     * 리스기는 **내 자산이 아니다** — 기단 가치·상각·매각 어디에도 잡히지 않고,
+     * 대신 [leaseRate] 가 매 분기 고정비로 나간다. 자본을 안 쓰는 대신 경기가
+     * 꺾여도 줄지 않는 비용을 지는 쪽이다.
+     */
+    val leaseUntilTurn: Int? = null,
+    /** 분기 리스료 (계약 시점의 명목 달러 — 물가가 올라도 그대로다). */
+    val leaseRate: Double = 0.0,
 ) {
     /** 이번 분기에 중정비로 묶여 있는가. */
     fun inCheck(turn: Int) = turn <= checkUntilTurn
+
+    /** 빌린 기체인가. */
+    val leased: Boolean get() = leaseUntilTurn != null
 }
 
 /**
@@ -294,6 +307,8 @@ data class QuarterResult(
     val maintCost: Double = 0.0,
     /** 중정비비 — 기체를 통째로 뜯어 보는 값. 노선 정비비와 달리 편수가 아니라 기재에 붙는다. */
     val checkCost: Double = 0.0,
+    /** 리스료 — 빌린 기재에 매 분기 나가는 고정비. 상각과 달리 현금이 실제로 나간다. */
+    val leaseCost: Double = 0.0,
     val landingCost: Double = 0.0,
     val paxServiceCost: Double = 0.0,
     val distributionCost: Double = 0.0,

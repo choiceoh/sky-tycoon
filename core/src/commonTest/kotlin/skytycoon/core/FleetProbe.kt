@@ -33,6 +33,9 @@ class FleetProbe {
             var revenue = 0.0
             var lostFreq = 0
             var wantedFreq = 0
+            var leaseCost = 0.0
+            var worldPlaneQuarters = 0
+            var worldLeasedQuarters = 0
             var groundedRouteQuarters = 0
             var routeQuarters = 0
             val prevHours = HashMap<Int, Double>()
@@ -62,6 +65,11 @@ class FleetProbe {
 
                 val r = me.lastResult ?: return@repeat
                 checkCost += r.checkCost
+                leaseCost += r.leaseCost
+                // 리스는 **판 전체**로 본다 — 플레이어 회사만 세면 그 회사 성향에 가려
+                // 경쟁사가 얼마나 쓰는지가 안 보인다.
+                worldPlaneQuarters += s.planes.size
+                worldLeasedQuarters += s.planes.count { it.leased }
                 revenue += r.totalRevenue
 
                 for (route in s.routesOf(me.id).filter { it.active && it.freq > 0 }) {
@@ -80,7 +88,9 @@ class FleetProbe {
                     "전편 결항 노선분기 ${pct(groundedRouteQuarters.toDouble() / routeQuarters.coerceAtLeast(1))}  " +
                     "중정비비/매출 ${pct(checkCost / revenue.coerceAtLeast(1.0))}  " +
                     "뜨는 기체 평균 ${(hoursFlown / flyingPlaneQuarters.coerceAtLeast(1)).toInt()}h/분기  " +
-                    "노는 기체 ${pct(idlePlaneQuarters.toDouble() / fleetQuarters.coerceAtLeast(1))}",
+                    "노는 기체 ${pct(idlePlaneQuarters.toDouble() / fleetQuarters.coerceAtLeast(1))}  " +
+                    "리스 비중(판 전체) ${pct(worldLeasedQuarters.toDouble() / worldPlaneQuarters.coerceAtLeast(1))}  " +
+                    "리스료/매출 ${pct(leaseCost / revenue.coerceAtLeast(1.0))}",
             )
         }
         println("── 기종별 점검 주기 (기령 0 / 40분기)")
@@ -91,6 +101,9 @@ class FleetProbe {
                     "${Maintenance.intervalHours(t, 40).toInt()}h",
             )
         }
-        println("목표: 입고율 8~15% · 중정비비/매출 1~3%")
+        println("목표: 입고율 4~7% (실물 중정비 가동 손실과 같은 눈금) · 중정비비/매출 1% 안팎 · 리스 비중 5~10%")
+        // 처음엔 3년 주기(입고율 8.5%)로 잡았는데, 한 분기를 통째로 세우는 모델에서는
+        // 그게 실물의 2~3배였다. 자동조종 10년 성장이 여섯 판 중 두 판에서 마이너스로
+        // 돌아섰다 — 5년 주기로 늘리고 한 번 값을 올려 현금 부담은 남기고 가동 손실만 줄였다.
     }
 }

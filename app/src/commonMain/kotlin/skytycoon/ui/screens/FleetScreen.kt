@@ -31,6 +31,7 @@ import skytycoon.core.data.Cities
 import skytycoon.core.sim.Actions
 import skytycoon.core.sim.Balance
 import skytycoon.core.sim.Command
+import skytycoon.core.sim.Leasing
 import skytycoon.core.sim.Maintenance
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
@@ -137,17 +138,36 @@ private fun OwnedFleet(vm: GameViewModel, modifier: Modifier) {
                         if (checkNote != null) {
                             Text(checkNote.first, color = checkNote.second, fontSize = 11.sp)
                         }
+                        if (plane.leased) {
+                            val left = Leasing.quartersLeft(s, plane)
+                            Text(
+                                "리스 · 분기 ${moneyShort(plane.leaseRate)} · ${left}분기 남음",
+                                color = if (left <= 2) Amber else Mint,
+                                fontSize = 11.sp,
+                            )
+                        }
                     }
                     Column(horizontalAlignment = Alignment.End) {
+                        // 빌린 기체는 팔 게 아니라 돌려주는 것이라, 값 대신 위약금을 보여준다.
                         Text(
-                            moneyShort(Actions.sellPrice(t, plane.ageQuarters, plane.priceMul)),
+                            if (plane.leased) {
+                                "위약금 ${moneyShort(Leasing.breakFee(s, plane))}"
+                            } else {
+                                moneyShort(Actions.sellPrice(t, plane.ageQuarters, plane.priceMul))
+                            },
                             color = TextMid,
                             fontSize = 11.sp,
                         )
                         if (route == null) {
                             OutlinedButton(
-                                onClick = { vm.run(Command.SellAircraft(s.playerId, plane.id)) },
-                            ) { Text("매각", fontSize = 11.sp) }
+                                onClick = {
+                                    if (plane.leased) {
+                                        vm.run(Command.ReturnLease(s.playerId, plane.id))
+                                    } else {
+                                        vm.run(Command.SellAircraft(s.playerId, plane.id))
+                                    }
+                                },
+                            ) { Text(if (plane.leased) "반납" else "매각", fontSize = 11.sp) }
                         }
                     }
                 }
@@ -156,40 +176,63 @@ private fun OwnedFleet(vm: GameViewModel, modifier: Modifier) {
     }
 }
 
+/** 기재를 들이는 세 가지 길. 값을 치르는 방식이 저마다 다르다. */
+private enum class BuyMode { NEW, USED, LEASE }
+
 @Composable
 private fun AircraftMarket(vm: GameViewModel, modifier: Modifier) {
     val s = vm.game
-    var usedMode by remember { mutableStateOf(false) }
+    var mode by remember { mutableStateOf(BuyMode.NEW) }
+    val usedMode = mode == BuyMode.USED
+    var leaseTerm by remember { mutableStateOf(Balance.LEASE_TERMS.max()) }
     // 판이 끝나면 turn 이 totalTurns 라 s.year 는 플레이하지도 않은 다음 해가 된다.
     // 진영 밖 기재는 애초에 목록에 없다 — 살 수 없는 것을 보여 주고 버튼만 막으면
     // 왜 못 사는지 모른 채 헤맨다.
     val home = s.player.home
-    val catalog = if (usedMode) {
-        AircraftCatalog.usedFor(s.displayYear, home)
-    } else {
-        AircraftCatalog.newFor(s.displayYear, home)
+    val catalog = when (mode) {
+        BuyMode.USED -> AircraftCatalog.usedFor(s.displayYear, home)
+        // 리스 시장에는 현행기와 갓 단종된 기종이 함께 나온다.
+        BuyMode.LEASE -> (AircraftCatalog.newFor(s.displayYear, home) + AircraftCatalog.usedFor(s.displayYear, home))
+            .distinctBy { it.id }
+        BuyMode.NEW -> AircraftCatalog.newFor(s.displayYear, home)
     }
+    val leaseRoom = Leasing.leaseRoom(s, s.player)
+    val leaseFits = Actions.arrivesBeforeEnd(s, leaseTerm)
     // 신조기는 인도까지 시간이 걸린다 — 명령과 같은 술어로 물어봐야 버튼이 갈라지지 않는다.
     val inTime = Actions.orderFitsCampaign(s)
 
     Column(modifier) {
         Panel(title = "기재 시장 · ${s.displayYear}년") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip("신조기", selected = !usedMode, onClick = { usedMode = false })
-                Chip("중고기", selected = usedMode, accent = Amber, onClick = { usedMode = true })
+                Chip("신조기", selected = mode == BuyMode.NEW, onClick = { mode = BuyMode.NEW })
+                Chip("중고기", selected = mode == BuyMode.USED, accent = Amber, onClick = { mode = BuyMode.USED })
+                Chip("리스", selected = mode == BuyMode.LEASE, accent = Mint, onClick = { mode = BuyMode.LEASE })
             }
             VSpace(6)
             Text(
-                if (usedMode) "즉시 인도. 기령이 있어 정비비가 더 듭니다."
-                else "발주 후 ${Balance.ORDER_DELAY_QUARTERS}분기 뒤 인도. 대금은 지금 나갑니다.",
+                when (mode) {
+                    BuyMode.USED -> "즉시 인도. 기령이 있어 정비비가 더 듭니다."
+                    BuyMode.LEASE -> "목돈 없이 즉시 인도. 대신 계약 기간 내내 분기 리스료가 나가고 " +
+                        "기체는 내 자산이 되지 않습니다 (지금 ${leaseRoom}대까지)."
+                    BuyMode.NEW -> "발주 후 ${Balance.ORDER_DELAY_QUARTERS}분기 뒤 인도. 대금은 지금 나갑니다."
+                },
                 color = TextLow,
                 fontSize = 11.sp,
             )
+            if (mode == BuyMode.LEASE) {
+                VSpace(6)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (q in Balance.LEASE_TERMS) {
+                        Chip("${q / 4}년", selected = leaseTerm == q, accent = Mint, onClick = { leaseTerm = q })
+                    }
+                }
+            }
         }
         VSpace(10)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(catalog, key = { it.id }) { t ->
                 val price = if (usedMode) Actions.usedPrice(s, t.id) else t.price
+                val rent = Leasing.quarterlyRate(t, leaseTerm)
                 Column(
                     Modifier
                         .fillMaxWidth()
@@ -202,7 +245,14 @@ private fun AircraftMarket(vm: GameViewModel, modifier: Modifier) {
                             Text(t.name, color = TextHigh, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             Text("${t.maker} · ${t.year}년 취항", color = TextLow, fontSize = 10.sp)
                         }
-                        Text(moneyShort(price), color = Amber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        if (mode == BuyMode.LEASE) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(moneyShort(rent), color = Mint, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("분기 리스료", color = TextLow, fontSize = 10.sp)
+                            }
+                        } else {
+                            Text(moneyShort(price), color = Amber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                     VSpace(6)
                     Text(
@@ -215,14 +265,38 @@ private fun AircraftMarket(vm: GameViewModel, modifier: Modifier) {
                     VSpace(6)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (n in listOf(1, 2, 5)) {
-                            OutlinedButton(
-                                onClick = { vm.run(Command.BuyAircraft(s.playerId, t.id, n, used = usedMode)) },
-                                enabled = s.player.cash >= price * n && (usedMode || inTime),
-                                modifier = Modifier.weight(1f),
-                            ) { Text("${n}대", fontSize = 11.sp, color = Sky) }
+                            if (mode == BuyMode.LEASE) {
+                                OutlinedButton(
+                                    onClick = {
+                                        vm.run(Command.LeaseAircraft(s.playerId, t.id, n, leaseTerm))
+                                    },
+                                    enabled = leaseRoom >= n && leaseFits,
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("${n}대", fontSize = 11.sp, color = Mint) }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { vm.run(Command.BuyAircraft(s.playerId, t.id, n, used = usedMode)) },
+                                    enabled = s.player.cash >= price * n && (usedMode || inTime),
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("${n}대", fontSize = 11.sp, color = Sky) }
+                            }
                         }
                     }
-                    if (!usedMode && !inTime) {
+                    if (mode == BuyMode.LEASE) {
+                        VSpace(6)
+                        Text(
+                            if (!leaseFits) {
+                                "남은 기간(${s.totalTurns - s.turn}분기)보다 긴 계약은 맺을 수 없습니다."
+                            } else if (leaseRoom <= 0) {
+                                "리스기 비중이 한도(기단의 ${(Balance.LEASE_FLEET_SHARE_MAX * 100).toInt()}%)에 찼습니다."
+                            } else {
+                                "${leaseTerm / 4}년 총 ${moneyShort(rent * leaseTerm)} · 사면 ${moneyShort(t.price)}"
+                            },
+                            color = TextLow,
+                            fontSize = 10.sp,
+                        )
+                    }
+                    if (mode == BuyMode.NEW && !inTime) {
                         VSpace(6)
                         Text(
                             "남은 기간(${s.totalTurns - s.turn}분기) 안에 인도되지 않습니다. 중고로 알아보세요.",
