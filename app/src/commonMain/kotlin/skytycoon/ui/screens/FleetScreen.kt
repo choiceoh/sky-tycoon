@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,6 +102,10 @@ private fun OwnedFleet(vm: GameViewModel, modifier: Modifier) {
         filter == FleetFilter.CHECK && due == 0 -> FleetFilter.ALL
         else -> filter
     }
+    // 보여주는 것만 되돌리고 고른 값을 남겨 두면 안 된다. 유휴가 0 이 됐다가 (기체를
+    // 새로 받거나 노선을 접어) 다시 생기는 순간, 누른 적 없는 눈이 되살아나 목록이
+    // 저 혼자 좁아진다. 그 자리에서 상태도 같이 되돌린다.
+    LaunchedEffect(effective) { filter = effective }
     val planes = when (effective) {
         FleetFilter.ALL -> all
         FleetFilter.IDLE -> all.filter { it.routeId == null }
