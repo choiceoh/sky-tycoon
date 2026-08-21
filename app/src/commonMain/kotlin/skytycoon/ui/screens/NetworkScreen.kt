@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -122,9 +123,14 @@ fun NetworkScreen(vm: GameViewModel, wide: Boolean) {
             panel(Modifier.width(390.dp).fillMaxHeight().padding(12.dp))
         }
     } else {
-        Column(Modifier.fillMaxSize()) {
-            map(Modifier.fillMaxWidth().height(250.dp))
-            panel(Modifier.fillMaxWidth().weight(1f).padding(12.dp))
+        // 지도 높이를 250dp 로 박아 두면 작은 폰에서는 화면의 절반을 먹고, 큰 폰에서는
+        // 남는 자리를 놀리면서 아시아 한 귀퉁이만 보인다. 화면에 맞춰 비율로 잡는다.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val mapHeight = (maxHeight * 0.38f).coerceIn(200.dp, 360.dp)
+            Column(Modifier.fillMaxSize()) {
+                map(Modifier.fillMaxWidth().height(mapHeight))
+                panel(Modifier.fillMaxWidth().weight(1f).padding(12.dp))
+            }
         }
     }
 

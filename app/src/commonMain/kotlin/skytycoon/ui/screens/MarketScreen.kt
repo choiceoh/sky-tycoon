@@ -1,6 +1,7 @@
 package skytycoon.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -104,6 +109,9 @@ fun MarketScreen(vm: GameViewModel, wide: Boolean) {
         }
 
         VSpace(12)
+        // 폰에서는 경쟁사 한 곳이 화면 두 뼘을 잡아먹어, 일곱 곳의 판세를 비교하려면
+        // 스크롤을 여섯 번 해야 한다. 접어 두고 누른 곳만 편다 (넓은 화면은 다 편다).
+        var expanded by remember { mutableStateOf<String?>(null) }
         for (rival in s.airlines.filter { it.id != player.id }) {
             val alive = rival.alive
             val equity = Economics.equity(s, rival)
@@ -115,6 +123,7 @@ fun MarketScreen(vm: GameViewModel, wide: Boolean) {
             val buyable = if (alive) Stock.affordableShares(s, player.id, rival.id) else 0.0
             val cost = if (buyable > 0) Stock.buyCost(s, player.id, rival.id, buyable) else 0.0
 
+            val open = wide || expanded == rival.id
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -122,7 +131,17 @@ fun MarketScreen(vm: GameViewModel, wide: Boolean) {
                     .background(InkPanelHigh)
                     .padding(12.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // 접었다 펴는 손잡이는 머리줄에만 단다. 카드 전체를 누르게 하면 매수 버튼
+                // 옆을 짚었다가 카드가 접혀 버린다.
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (wide) Modifier
+                            else Modifier.clickable { expanded = if (open) null else rival.id },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Dot(Color(rival.colorArgb), 10)
                     Box(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
@@ -138,9 +157,20 @@ fun MarketScreen(vm: GameViewModel, wide: Boolean) {
                             fontSize = 11.sp,
                         )
                     }
-                    Text(moneyShort(equity), color = TextHigh, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(moneyShort(equity), color = TextHigh, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        // 접힌 상태에서도 이 두 가지는 보여야 한다 — 내 지분과 저쪽 덩치가
+                        // 인수전의 전부다. 나머지는 펴야 나온다.
+                        if (alive && !open) {
+                            Text(
+                                "내 지분 ${percent(myStake, 1)} · 펴기 ▾",
+                                color = if (myStake > 0) Mint else TextLow,
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
                 }
-                if (alive) {
+                if (alive && open) {
                     VSpace(8)
                     KeyValue("노선 / 기재", "${s.routesOf(rival.id).size}개 / ${s.planesOf(rival.id).size}대")
                     KeyValue("주가", moneyShort(rival.sharePrice))

@@ -32,6 +32,14 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
     var busy by mutableStateOf(false)
         private set
 
+    /**
+     * 노선 화면에서 들여다보고 있는 노선. 화면이 아니라 여기 두는 이유는 폰 때문이다 —
+     * 폰에서는 목록과 상세가 한 화면을 번갈아 쓰므로, 상세를 보다 기재 탭에 다녀오면
+     * 화면 안의 상태는 사라져 목록으로 되돌아간다. 증편할 기재를 확인하러 갔다 온
+     * 사람이 매번 노선을 다시 찾아야 한다는 뜻이다.
+     */
+    var openRouteId by mutableStateOf<Int?>(null)
+
     val game: GameState get() = requireNotNull(state) { "게임이 아직 시작되지 않았습니다" }
 
     private fun load(slot: SaveSlot): GameState? = store.read(slot)?.let { Save.decodeOrNull(it) }

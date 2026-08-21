@@ -82,29 +82,66 @@ fun FleetScreen(vm: GameViewModel, wide: Boolean) {
     }
 }
 
+/** 보유 목록을 좁히는 눈. 스무 대가 넘어가면 목록을 훑는 것만으로는 손쓸 기체를 못 찾는다. */
+private enum class FleetFilter { ALL, IDLE, CHECK }
+
 @Composable
 private fun OwnedFleet(vm: GameViewModel, modifier: Modifier) {
     val s = vm.game
-    val planes = s.planesOf(s.playerId).sortedWith(compareBy({ it.routeId != null }, { it.typeId }))
+    val all = s.planesOf(s.playerId).sortedWith(compareBy({ it.routeId != null }, { it.typeId }))
     val pending = s.orders.filter { it.airlineId == s.playerId }
 
+    var filter by remember { mutableStateOf(FleetFilter.ALL) }
+    val idle = all.count { it.routeId == null }
+    val due = all.count { Maintenance.isDue(it) || Maintenance.dueSoon(it) }
+    // 골라 둔 눈에 걸리는 기체가 하나도 남지 않으면(배속을 끝냈을 때 등) 빈 목록을
+    // 보여주는 대신 전체로 되돌린다 — 화면이 비면 기재를 잃은 것처럼 보인다.
+    val effective = when {
+        filter == FleetFilter.IDLE && idle == 0 -> FleetFilter.ALL
+        filter == FleetFilter.CHECK && due == 0 -> FleetFilter.ALL
+        else -> filter
+    }
+    val planes = when (effective) {
+        FleetFilter.ALL -> all
+        FleetFilter.IDLE -> all.filter { it.routeId == null }
+        FleetFilter.CHECK -> all.filter { Maintenance.isDue(it) || Maintenance.dueSoon(it) }
+    }
+
     Column(modifier) {
-        Panel(title = "보유 기재 ${planes.size}대") {
-            if (pending.isNotEmpty()) {
-                for (o in pending) {
-                    Text(
-                        "발주 중 · ${AircraftCatalog[o.typeId].name} ${o.count}대 " +
-                            "(${(o.deliverTurn - s.turn).coerceAtLeast(0)}분기 뒤 인도)",
-                        color = Amber,
-                        fontSize = 12.sp,
-                    )
+        // 눈만 화면에 고정하고 발주 현황은 목록과 함께 흘려보낸다. 폰에서는 고정 머리말이
+        // 한 뼘만 되어도 정작 기체는 서너 대밖에 안 보인다.
+        if (all.isNotEmpty() && (idle > 0 || due > 0)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("전체 ${all.size}", selected = effective == FleetFilter.ALL) { filter = FleetFilter.ALL }
+                if (idle > 0) {
+                    Chip("유휴 $idle", selected = effective == FleetFilter.IDLE, accent = Coral) {
+                        filter = FleetFilter.IDLE
+                    }
                 }
-                VSpace(8)
+                if (due > 0) {
+                    Chip("정비 임박 $due", selected = effective == FleetFilter.CHECK, accent = Amber) {
+                        filter = FleetFilter.CHECK
+                    }
+                }
             }
-            if (planes.isEmpty()) EmptyHint("보유한 기재가 없습니다.")
         }
         VSpace(10)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (pending.isNotEmpty() || all.isEmpty()) {
+                item {
+                    Panel(title = "보유 기재 ${all.size}대") {
+                        for (o in pending) {
+                            Text(
+                                "발주 중 · ${AircraftCatalog[o.typeId].name} ${o.count}대 " +
+                                    "(${(o.deliverTurn - s.turn).coerceAtLeast(0)}분기 뒤 인도)",
+                                color = Amber,
+                                fontSize = 12.sp,
+                            )
+                        }
+                        if (all.isEmpty()) EmptyHint("보유한 기재가 없습니다.")
+                    }
+                }
+            }
             items(planes, key = { it.id }) { plane ->
                 val t = AircraftCatalog[plane.typeId]
                 val route = plane.routeId?.let { id -> s.routes.firstOrNull { it.id == id } }
