@@ -1,17 +1,28 @@
 package skytycoon.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,7 +32,9 @@ import skytycoon.core.sim.DebriefLine
 import skytycoon.core.sim.DebriefTone
 import skytycoon.ui.Amber
 import skytycoon.ui.Coral
+import skytycoon.ui.Loss
 import skytycoon.ui.Mint
+import skytycoon.ui.Profit
 import skytycoon.ui.GameViewModel
 import skytycoon.ui.TextHigh
 import skytycoon.ui.TextLow
@@ -42,6 +55,11 @@ fun QuarterReportDialog(vm: GameViewModel, report: QuarterResult, onDismiss: () 
     val year = s.startYear + report.turn / 4
     val quarter = report.turn % 4 + 1
 
+    // 440dp 로 박아 두면 작은 폰에서는 대화상자가 화면 밖으로 밀리고, 큰 폰에서는 남는
+    // 자리를 두고도 계정과목이 여덟 줄쯤에서 잘린다. 창 높이의 절반 남짓을 준다.
+    val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
+    val listMax = (windowHeight * 0.52f).coerceIn(260.dp, 560.dp)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -56,7 +74,7 @@ fun QuarterReportDialog(vm: GameViewModel, report: QuarterResult, onDismiss: () 
             }
         },
         text = {
-            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.heightIn(max = listMax).verticalScroll(rememberScrollState())) {
                 // 계정과목보다 먼저 "무슨 일이 있었나"를 놓는다 — 스무 줄짜리 표를 스스로
                 // 뒤져 원인을 찾아내라고 하면 아무도 읽지 않는다.
                 Text("무슨 일이 있었나", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -117,27 +135,55 @@ fun QuarterReportDialog(vm: GameViewModel, report: QuarterResult, onDismiss: () 
                 if (recent.size >= 2) {
                     VSpace(12)
                     Text("최근 순익 추이", color = TextLow, fontSize = 11.sp)
-                    VSpace(4)
-                    Row(Modifier.fillMaxWidth()) {
-                        for (r in recent) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    signedMoney(r.net),
-                                    color = profitColor(r.net),
-                                    fontSize = 9.sp,
-                                )
-                                Text(
-                                    "${(s.startYear + r.turn / 4) % 100}Q${r.turn % 4 + 1}",
-                                    color = TextMid,
-                                    fontSize = 8.sp,
-                                )
-                            }
-                        }
-                    }
+                    VSpace(6)
+                    NetTrend(recent, s.startYear)
                 }
             }
         },
         confirmButton = { Button(onClick = onDismiss) { Text("확인") } },
+    )
+}
+
+/**
+ * 분기 순익 추이 막대. 예전에는 여덟 칸에 9sp 금액을 늘어놓았는데, 폰에서는 글자가
+ * 칸을 넘겨 잘리기만 하고 추세는 읽히지 않았다. 금액은 위에 이미 다 있으니 여기서는
+ * 흑자·적자의 모양만 보여준다 — 0 선을 가운데 두고 위아래로 뻗는다.
+ */
+@Composable
+private fun NetTrend(recent: List<QuarterResult>, startYear: Int) {
+    val peak = recent.maxOf { kotlin.math.abs(it.net) }.coerceAtLeast(1.0)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (r in recent) {
+            val share = (kotlin.math.abs(r.net) / peak).toFloat().coerceIn(0.04f, 1f)
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                // 위 칸은 흑자, 아래 칸은 적자. 두 칸이 같은 높이라 0 선이 한 줄로 이어진다.
+                Box(Modifier.fillMaxWidth().height(26.dp), contentAlignment = Alignment.BottomCenter) {
+                    if (r.net >= 0) Bar(share, Profit)
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(TextLow))
+                Box(Modifier.fillMaxWidth().height(26.dp), contentAlignment = Alignment.TopCenter) {
+                    if (r.net < 0) Bar(share, Loss)
+                }
+                VSpace(3)
+                Text(
+                    "${(startYear + r.turn / 4) % 100}Q${r.turn % 4 + 1}",
+                    color = TextMid,
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Bar(share: Float, color: Color) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(share)
+            .clip(RoundedCornerShape(2.dp))
+            .background(color),
     )
 }
 

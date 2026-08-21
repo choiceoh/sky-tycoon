@@ -32,6 +32,23 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
     var busy by mutableStateOf(false)
         private set
 
+    /**
+     * 노선 화면에서 들여다보고 있는 노선. 화면이 아니라 여기 두는 이유는 폰 때문이다 —
+     * 폰에서는 목록과 상세가 한 화면을 번갈아 쓰므로, 상세를 보다 기재 탭에 다녀오면
+     * 화면 안의 상태는 사라져 목록으로 되돌아간다. 증편할 기재를 확인하러 갔다 온
+     * 사람이 매번 노선을 다시 찾아야 한다는 뜻이다.
+     *
+     * **판을 통째로 갈아끼우면 예외 없이 비운다.** 노선 id 는 `GameState.nextId` 가
+     * 매기므로 판마다 1 부터 다시 시작한다 — 새 게임·이어하기·세이브 불러오기에서
+     * 안 비우면 지난 판의 id 가 새 판의 엉뚱한 노선과 맞아떨어져, 누른 적도 없는 상세가
+     * 열린 채 노선 화면이 뜬다.
+     *
+     * 되돌리기(`loadSaved`)도 마찬가지다. 같은 판이라 안전할 것 같지만 **채번기까지 같이
+     * 되감긴다** — 되돌린 뒤 노선을 새로 열면 버려진 미래에서 이미 쓴 id 를 다시 내주고,
+     * 들고 있던 값이 그 새 노선과 맞아떨어진다.
+     */
+    var openRouteId by mutableStateOf<Int?>(null)
+
     val game: GameState get() = requireNotNull(state) { "게임이 아직 시작되지 않았습니다" }
 
     private fun load(slot: SaveSlot): GameState? = store.read(slot)?.let { Save.decodeOrNull(it) }
@@ -60,6 +77,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
             seed = seed,
         )
         pendingReport = null
+        openRouteId = null
         message = null
         // 여기서 저장하지 않는다. 시작 화면에서 잘못 눌렀을 때 기존 캠페인이
         // 즉시 지워지면 되돌릴 방법이 없다 — 첫 분기를 넘겨야 비로소 슬롯을 차지한다.
@@ -76,6 +94,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
         }
         state = loaded
         pendingReport = null
+        openRouteId = null
         message = "${loaded.displayYear}년 ${loaded.displayQuarter}분기부터 이어서 진행합니다."
         return true
     }
@@ -83,6 +102,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
     fun quit() {
         state = null
         pendingReport = null
+        openRouteId = null
     }
 
     /** 플레이어 명령 실행. 실패하면 이유를 스낵바로 알린다. */
@@ -171,6 +191,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
         }
         state = loaded
         pendingReport = null
+        openRouteId = null
         val saved = autoSave()
         message = if (saved) {
             "${loaded.displayYear}년 ${loaded.displayQuarter}분기로 되돌렸습니다."
@@ -190,6 +211,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
             return false
         }
         state = loaded
+        openRouteId = null
         val saved = autoSave()
         message = if (saved) {
             "${loaded.displayYear}년 ${loaded.displayQuarter}분기 세이브를 불러왔습니다."

@@ -40,7 +40,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -82,10 +84,16 @@ fun App(vm: GameViewModel = remember { GameViewModel() }, initialTab: Tab = Tab.
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun GameShell(vm: GameViewModel, initialTab: Tab) {
     var tab by remember { mutableStateOf(initialTab) }
     val snackbar = remember { SnackbarHostState() }
+
+    // 안드로이드에서 뒤로 가기는 탭 이동을 되돌린다. 이게 없으면 노선 화면을 보다 뒤로를
+    // 누른 사람이 그대로 앱 밖으로 튕겨 나간다 — 폰에서 탭만 있는 앱의 기본 예의다.
+    // 경영 탭에서 한 번 더 누르면 그때는 시스템이 받아 앱을 내린다.
+    BackHandler(tab != Tab.DASHBOARD) { tab = Tab.DASHBOARD }
 
     LaunchedEffect(vm.message) {
         vm.message?.let {

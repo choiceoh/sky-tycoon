@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -31,6 +32,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
@@ -122,9 +125,14 @@ fun NetworkScreen(vm: GameViewModel, wide: Boolean) {
             panel(Modifier.width(390.dp).fillMaxHeight().padding(12.dp))
         }
     } else {
-        Column(Modifier.fillMaxSize()) {
-            map(Modifier.fillMaxWidth().height(250.dp))
-            panel(Modifier.fillMaxWidth().weight(1f).padding(12.dp))
+        // 지도 높이를 250dp 로 박아 두면 작은 폰에서는 화면의 절반을 먹고, 큰 폰에서는
+        // 남는 자리를 놀리면서 아시아 한 귀퉁이만 보인다. 화면에 맞춰 비율로 잡는다.
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val mapHeight = (maxHeight * 0.38f).coerceIn(200.dp, 360.dp)
+            Column(Modifier.fillMaxSize()) {
+                map(Modifier.fillMaxWidth().height(mapHeight))
+                panel(Modifier.fillMaxWidth().weight(1f).padding(12.dp))
+            }
         }
     }
 
@@ -346,12 +354,17 @@ private fun RouteComposer(vm: GameViewModel, from: String, to: String, onDismiss
     val maxFreq = minOf(cap.maxFreq, slotLimit).coerceAtLeast(0)
     val effFreq = freq.toInt().coerceIn(0, maxFreq)
     val setupCost = Actions.routeSetupCost(s, from, to)
+    // 결산 대화상자와 같은 이유로 높이를 박지 않는다 — 작은 폰에서는 화면 밖으로 밀리고,
+    // 큰 폰에서는 남는 자리를 두고도 기재 목록이 서너 줄에서 잘린다.
+    val listMax = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
+        .times(0.52f)
+        .coerceIn(260.dp, 560.dp)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("${Cities.name(from)} – ${Cities.name(to)}", fontWeight = FontWeight.Bold) },
         text = {
-            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.heightIn(max = listMax).verticalScroll(rememberScrollState())) {
                 Text("거리 ${km(dist)} · 표준 운임 ${moneyShort(Economics.standardFare(dist, s.world.inflation))}", color = TextMid, fontSize = 12.sp)
                 VSpace(10)
 

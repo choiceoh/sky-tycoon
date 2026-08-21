@@ -123,7 +123,7 @@ fun DashboardScreen(vm: GameViewModel, wide: Boolean, onGoTo: (Tab) -> Unit) {
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onGoTo(a.tab) }
-                                .padding(vertical = 4.dp),
+                                .padding(horizontal = 4.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Dot(a.color)
@@ -196,7 +196,16 @@ fun DashboardScreen(vm: GameViewModel, wide: Boolean, onGoTo: (Tab) -> Unit) {
 
         VSpace(14)
         Panel(title = "최근 소식", trailing = {
-            Text("전체 보기 ›", color = Sky, fontSize = 11.sp, modifier = Modifier.clickable { onGoTo(Tab.NEWS) })
+            // 손가락으로 누르는 자리다 — 11sp 글자만큼만 반응하면 세 번에 한 번은 빗나간다.
+            Text(
+                "전체 보기 ›",
+                color = Sky,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onGoTo(Tab.NEWS) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            )
         }) {
             for (item in s.news.takeLast(4).reversed()) {
                 Column(Modifier.padding(vertical = 4.dp)) {

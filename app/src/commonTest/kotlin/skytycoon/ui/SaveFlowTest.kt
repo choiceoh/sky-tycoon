@@ -36,6 +36,37 @@ class SaveFlowTest {
     }
 
     @Test
+    fun `판이 바뀌면 들여다보던 노선을 놓는다`() {
+        val store = MemorySaveStore()
+        val vm = GameViewModel(store)
+        vm.start("goldenage", "hanseong", "normal", seed = 1)
+        vm.endTurn()
+
+        val route = vm.game.routesOf(vm.game.playerId).first()
+        vm.openRouteId = route.id
+
+        // 되돌리기도 놓아야 한다. 같은 판이라 안전할 것 같지만 채번기(nextId)까지 같이
+        // 되감겨, 되돌린 뒤 노선을 새로 열면 버려진 미래에서 쓴 id 를 다시 내준다.
+        assertTrue(vm.saveNow())
+        assertTrue(vm.loadSaved())
+        assertEquals(null, vm.openRouteId, "되돌렸는데 지난 진행의 노선을 들고 있다")
+
+        // 새 판으로 갈아타면 놓아야 한다. 노선 id 는 판마다 1 부터 다시 매겨지므로,
+        // 들고 있으면 새 판의 엉뚱한 노선 상세가 열린 채로 노선 화면이 뜬다.
+        vm.openRouteId = route.id
+        vm.quit()
+        assertEquals(null, vm.openRouteId, "판을 접었는데 지난 판의 노선을 들고 있다")
+
+        vm.openRouteId = route.id
+        vm.start("goldenage", "fuji", "normal", seed = 2)
+        assertEquals(null, vm.openRouteId, "새 게임을 시작했는데 지난 판의 노선을 들고 있다")
+
+        vm.openRouteId = route.id
+        assertTrue(vm.resume())
+        assertEquals(null, vm.openRouteId, "이어하기로 다른 판을 불렀는데 지난 판의 노선을 들고 있다")
+    }
+
+    @Test
     fun `명령 하나로 판이 끝나면 그 결과를 저장한다`() {
         val store = MemorySaveStore()
         val vm = GameViewModel(store)

@@ -27,7 +27,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -65,38 +67,65 @@ import skytycoon.ui.percent
 import skytycoon.ui.profitColor
 import skytycoon.ui.signedMoney
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun RoutesScreen(vm: GameViewModel, wide: Boolean) {
     val s = vm.game
     val routes = s.routesOf(s.playerId).sortedByDescending { it.last?.profit ?: 0.0 }
-    var selectedId by remember { mutableStateOf<Int?>(null) }
-    val selected = routes.firstOrNull { it.id == selectedId } ?: routes.firstOrNull()
+    // 노선을 폐지하면 목록에서 사라진다 — 그때는 들여다볼 대상이 없으니 자연히
+    // 목록으로 돌아온다 (노선 id 는 재사용되지 않으므로 되살아날 일도 없다).
+    val open = routes.firstOrNull { it.id == vm.openRouteId }
 
     if (routes.isEmpty()) {
         EmptyHint("아직 노선이 없습니다. 노선망 화면에서 도시를 골라 개설하세요.")
         return
     }
 
-    val list = @Composable { modifier: Modifier ->
+    val list = @Composable { modifier: Modifier, highlight: Int? ->
         LazyColumn(modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(routes, key = { it.id }) { route ->
-                RouteRow(s, route, selected?.id == route.id) { selectedId = route.id }
+                RouteRow(s, route, highlight == route.id) { vm.openRouteId = route.id }
             }
         }
     }
 
     if (wide) {
+        // 넓은 화면은 목록과 상세를 나란히 둔다. 고른 적이 없으면 맨 위 노선을 보여준다.
+        val shown = open ?: routes.first()
         Row(Modifier.fillMaxSize()) {
-            list(Modifier.weight(1f).fillMaxHeight())
+            list(Modifier.weight(1f).fillMaxHeight(), shown.id)
             Box(Modifier.width(400.dp).fillMaxHeight().padding(12.dp)) {
-                selected?.let { RouteDetail(vm, it) }
+                RouteDetail(vm, shown)
             }
         }
     } else {
-        Column(Modifier.fillMaxSize()) {
-            list(Modifier.fillMaxWidth().weight(1f))
-            Box(Modifier.fillMaxWidth().weight(1.1f).padding(12.dp)) {
-                selected?.let { RouteDetail(vm, it) }
+        // 폰 세로에서 목록과 상세를 위아래로 반씩 나누면 **둘 다** 서너 줄만 보인 채
+        // 각자 스크롤한다 — 노선을 고르는 일도, 편수를 만지는 일도 창구멍으로 하게 된다.
+        // 한 번에 하나만 전체 높이로 띄우고 노선을 누르면 상세로 넘어간다.
+        BackHandler(open != null) { vm.openRouteId = null }
+
+        if (open == null) {
+            list(Modifier.fillMaxSize(), null)
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { vm.openRouteId = null }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("‹  노선 목록", color = Sky, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${routes.size}개",
+                        color = TextLow,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    )
+                }
+                Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp)) {
+                    RouteDetail(vm, open)
+                }
             }
         }
     }
@@ -269,7 +298,10 @@ private fun RouteDetail(vm: GameViewModel, route: Route) {
                 if (editingFleet) "닫기" else "변경",
                 color = Sky,
                 fontSize = 11.sp,
-                modifier = Modifier.clickable { editingFleet = !editingFleet },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { editingFleet = !editingFleet }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }) {
             if (!editingFleet) {
@@ -287,9 +319,12 @@ private fun RouteDetail(vm: GameViewModel, route: Route) {
                 for (p in candidates) {
                     val t = AircraftCatalog[p.typeId]
                     Row(
-                        Modifier.fillMaxWidth().clickable {
-                            picked = if (p.id in picked) picked - p.id else picked + p.id
-                        },
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                picked = if (p.id in picked) picked - p.id else picked + p.id
+                            }
+                            .padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(checked = p.id in picked, onCheckedChange = null)

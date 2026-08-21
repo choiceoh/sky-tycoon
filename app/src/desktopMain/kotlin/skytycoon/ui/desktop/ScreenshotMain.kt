@@ -48,6 +48,14 @@ fun main(args: Array<String>) {
     reportVm.endTurn()
     reportVm.message = null
 
+    // 폰에서 노선 상세는 목록에서 노선을 눌러야 나온다 — 열어 둔 판을 따로 만들어 찍는다.
+    // 상세가 잘리거나 넘치는 사고는 여기서만 잡힌다 (목록 화면에는 안 보인다).
+    val routeDetailVm = GameViewModel(MemorySaveStore())
+    routeDetailVm.importSave(requireNotNull(vm.exportSave()))
+    routeDetailVm.openRouteId = routeDetailVm.game
+        .routesOf(routeDetailVm.game.playerId)
+        .maxByOrNull { it.last?.profit ?: 0.0 }?.id
+
     // 시작 화면은 진행 중인 판이 없어야 나온다.
     val freshVm = GameViewModel(MemorySaveStore())
 
@@ -61,6 +69,7 @@ fun main(args: Array<String>) {
         Shot("02-dashboard", phone, Tab.DASHBOARD, vm),
         Shot("03-network", phone, Tab.NETWORK, vm),
         Shot("04-routes", phone, Tab.ROUTES, vm),
+        Shot("04b-route-detail", phone, Tab.ROUTES, routeDetailVm),
         Shot("05-fleet", phone, Tab.FLEET, vm),
         Shot("06-market", phone, Tab.MARKET, vm),
         Shot("07-manage", phone, Tab.MANAGE, vm),

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -82,11 +83,15 @@ fun SetupScreen(
         )
     }
 
+    // 안드로이드는 edge-to-edge 로 그린다. 게임 화면은 직접 만든 상단 바와 NavigationBar 가
+    // 각자 인셋을 챙기지만 이 화면은 그런 껍데기가 없다 — 안 챙기면 "SKY TYCOON" 이 시계
+    // 아래로 들어가고, 맨 아래 "취항하기" 가 제스처 바에 깔려 눌리지 않는다. 데스크톱은 0 이다.
     Box(Modifier.fillMaxSize().background(Ink), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier
                 .widthIn(max = 900.dp)
                 .verticalScroll(rememberScrollState())
+                .safeDrawingPadding()
                 .padding(28.dp),
         ) {
             Text("SKY TYCOON", color = TextHigh, fontSize = 34.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
