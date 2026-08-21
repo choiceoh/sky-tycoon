@@ -45,13 +45,15 @@ class SaveFlowTest {
         val route = vm.game.routesOf(vm.game.playerId).first()
         vm.openRouteId = route.id
 
-        // 되돌리기는 같은 판이므로 보던 노선을 그대로 둔다.
+        // 되돌리기도 놓아야 한다. 같은 판이라 안전할 것 같지만 채번기(nextId)까지 같이
+        // 되감겨, 되돌린 뒤 노선을 새로 열면 버려진 미래에서 쓴 id 를 다시 내준다.
         assertTrue(vm.saveNow())
         assertTrue(vm.loadSaved())
-        assertEquals(route.id, vm.openRouteId, "같은 판으로 되돌렸는데 보던 노선을 놓았다")
+        assertEquals(null, vm.openRouteId, "되돌렸는데 지난 진행의 노선을 들고 있다")
 
         // 새 판으로 갈아타면 놓아야 한다. 노선 id 는 판마다 1 부터 다시 매겨지므로,
         // 들고 있으면 새 판의 엉뚱한 노선 상세가 열린 채로 노선 화면이 뜬다.
+        vm.openRouteId = route.id
         vm.quit()
         assertEquals(null, vm.openRouteId, "판을 접었는데 지난 판의 노선을 들고 있다")
 

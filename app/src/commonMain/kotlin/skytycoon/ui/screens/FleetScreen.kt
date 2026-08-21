@@ -22,7 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,7 @@ import skytycoon.ui.grouped
 import skytycoon.ui.km
 import skytycoon.ui.moneyShort
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun FleetScreen(vm: GameViewModel, wide: Boolean) {
     val owned = @Composable { m: Modifier -> OwnedFleet(vm, m) }
@@ -67,6 +70,9 @@ fun FleetScreen(vm: GameViewModel, wide: Boolean) {
         // 폰 세로에서 위아래로 반씩 나눠 쓰면 기재 시장 목록이 서너 줄만 보여
         // 고르기가 답답하다. 한 번에 하나만 **전체 높이**로 보여준다.
         var showMarket by remember { mutableStateOf(false) }
+        // 시장으로 넘어간 것도 화면을 옮긴 것이다 — 뒤로 가기는 보유 목록으로 돌아와야
+        // 한다. 안 받으면 위층의 탭 핸들러가 받아 경영 탭까지 한 번에 튕겨 나간다.
+        BackHandler(showMarket) { showMarket = false }
         val ownedCount = vm.game.planesOf(vm.game.playerId).size
         Column(Modifier.fillMaxSize()) {
             Row(

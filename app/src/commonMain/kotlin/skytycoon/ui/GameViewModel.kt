@@ -38,11 +38,14 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
      * 화면 안의 상태는 사라져 목록으로 되돌아간다. 증편할 기재를 확인하러 갔다 온
      * 사람이 매번 노선을 다시 찾아야 한다는 뜻이다.
      *
-     * **판이 바뀌면 반드시 비운다.** 같은 뷰모델이 "새 게임"·이어하기·세이브 불러오기를
-     * 건너 살아남는데, 노선 id 는 판마다 1 부터 다시 매겨진다. 안 비우면 지난 판에서
-     * 보던 id 가 새 판의 엉뚱한 노선과 맞아떨어져, 누른 적도 없는 노선 상세가 열린 채
-     * 노선 화면이 뜬다. 되돌리기(`loadSaved`)만 예외다 — 같은 판임을 이미 확인했고,
-     * 그 시점에 없던 노선이면 화면이 알아서 목록으로 돌아간다.
+     * **판을 통째로 갈아끼우면 예외 없이 비운다.** 노선 id 는 `GameState.nextId` 가
+     * 매기므로 판마다 1 부터 다시 시작한다 — 새 게임·이어하기·세이브 불러오기에서
+     * 안 비우면 지난 판의 id 가 새 판의 엉뚱한 노선과 맞아떨어져, 누른 적도 없는 상세가
+     * 열린 채 노선 화면이 뜬다.
+     *
+     * 되돌리기(`loadSaved`)도 마찬가지다. 같은 판이라 안전할 것 같지만 **채번기까지 같이
+     * 되감긴다** — 되돌린 뒤 노선을 새로 열면 버려진 미래에서 이미 쓴 id 를 다시 내주고,
+     * 들고 있던 값이 그 새 노선과 맞아떨어진다.
      */
     var openRouteId by mutableStateOf<Int?>(null)
 
@@ -188,6 +191,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
         }
         state = loaded
         pendingReport = null
+        openRouteId = null
         val saved = autoSave()
         message = if (saved) {
             "${loaded.displayYear}년 ${loaded.displayQuarter}분기로 되돌렸습니다."
