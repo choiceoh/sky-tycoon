@@ -37,6 +37,12 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
      * 폰에서는 목록과 상세가 한 화면을 번갈아 쓰므로, 상세를 보다 기재 탭에 다녀오면
      * 화면 안의 상태는 사라져 목록으로 되돌아간다. 증편할 기재를 확인하러 갔다 온
      * 사람이 매번 노선을 다시 찾아야 한다는 뜻이다.
+     *
+     * **판이 바뀌면 반드시 비운다.** 같은 뷰모델이 "새 게임"·이어하기·세이브 불러오기를
+     * 건너 살아남는데, 노선 id 는 판마다 1 부터 다시 매겨진다. 안 비우면 지난 판에서
+     * 보던 id 가 새 판의 엉뚱한 노선과 맞아떨어져, 누른 적도 없는 노선 상세가 열린 채
+     * 노선 화면이 뜬다. 되돌리기(`loadSaved`)만 예외다 — 같은 판임을 이미 확인했고,
+     * 그 시점에 없던 노선이면 화면이 알아서 목록으로 돌아간다.
      */
     var openRouteId by mutableStateOf<Int?>(null)
 
@@ -68,6 +74,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
             seed = seed,
         )
         pendingReport = null
+        openRouteId = null
         message = null
         // 여기서 저장하지 않는다. 시작 화면에서 잘못 눌렀을 때 기존 캠페인이
         // 즉시 지워지면 되돌릴 방법이 없다 — 첫 분기를 넘겨야 비로소 슬롯을 차지한다.
@@ -84,6 +91,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
         }
         state = loaded
         pendingReport = null
+        openRouteId = null
         message = "${loaded.displayYear}년 ${loaded.displayQuarter}분기부터 이어서 진행합니다."
         return true
     }
@@ -91,6 +99,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
     fun quit() {
         state = null
         pendingReport = null
+        openRouteId = null
     }
 
     /** 플레이어 명령 실행. 실패하면 이유를 스낵바로 알린다. */
@@ -198,6 +207,7 @@ class GameViewModel(private val store: SaveStore = SaveStorage.current) {
             return false
         }
         state = loaded
+        openRouteId = null
         val saved = autoSave()
         message = if (saved) {
             "${loaded.displayYear}년 ${loaded.displayQuarter}분기 세이브를 불러왔습니다."
